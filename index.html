@@ -13,6 +13,7 @@
             font-family: 'Sarabun', sans-serif;
             background: var(--surface-muted);
             color: #2c1720;
+            min-height: 100vh;
         }
 
         :root {
@@ -29,11 +30,33 @@
         }
 
         .view-container {
-            max-width: 1100px;
-            margin: 0 auto;
+            width: 100%;
+            margin: 0;
             display: flex;
             flex-direction: column;
             gap: 1.5rem;
+        }
+
+        .nav-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: flex-start;
+            width: 100%;
+        }
+
+        @media (min-width: 768px) {
+            .nav-list {
+                width: auto;
+                justify-content: flex-end;
+            }
+        }
+
+        @media (max-width: 767px) {
+            .nav-item {
+                flex: 1 1 calc(50% - 0.5rem);
+                text-align: center;
+            }
         }
 
         .nav-item {
@@ -358,12 +381,6 @@
             color: #374151;
         }
 
-        #location-map {
-            width: 100%;
-            height: 220px;
-            border-radius: 12px;
-            border: 1px solid rgba(137, 77, 91, 0.3);
-        }
     </style>
   <style>@view-transition { navigation: auto; }</style>
   <script src="/_sdk/data_sdk.js" type="text/javascript"></script>
@@ -372,12 +389,12 @@
   <div class="flex flex-col h-screen"><!-- Top Navigation -->
    <div class="shadow-lg" style="background: var(--primary-bg); color: #4a2c35;">
     <div class="px-6 py-4">
-     <div class="flex items-center justify-between">
+     <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
       <div>
        <h1 id="systemTitle" class="text-xl font-bold">ระบบจัดการออกงานครู</h1>
        <p id="schoolName" class="text-sm opacity-80">กลุ่มสาระการเรียนรู้ภาษาไทย</p>
       </div>
-      <nav class="flex space-x-1">
+      <nav class="nav-list">
        <div class="nav-item active px-4 py-2 cursor-pointer rounded-lg" data-view="dashboard">
         <div class="flex items-center"><span class="mr-2">🏠</span> <span>หน้าหลัก</span>
         </div>
@@ -587,11 +604,7 @@
        </div>
       </div>
       <div class="form-group"><label class="form-label">สถานที่</label>
-       <input type="text" id="event-location" class="form-input" placeholder="ค้นหาสถานที่จาก Google Maps" required>
-       <div class="text-xs text-gray-500 mt-2">ค้นหาแล้วเลือกจากรายการ หรือคลิกบนแผนที่เพื่อระบุจุดจัดงาน</div>
-       <div id="location-map" class="mt-3"></div>
-       <input type="hidden" id="event-location-lat">
-       <input type="hidden" id="event-location-lng">
+       <input type="text" id="event-location" class="form-input" placeholder="เช่น หอประชุมใหญ่ โรงเรียนหันคาพิทยาคม" required>
       </div>
       <div class="form-group md:w-1/2"><label class="form-label">จำนวนครูที่ต้องการ</label> <input type="number" id="event-quota" class="form-input" min="1" required>
       </div>
@@ -701,7 +714,6 @@
 
         const PRIMARY_COLOR = '#894D5B';
         const SECONDARY_COLOR = '#E1B1C1';
-        const DEFAULT_MAP_CENTER = { lat: 13.7563, lng: 100.5018 };
 
         // Data structures
         let systemConfig = { ...defaultConfig };
@@ -713,11 +725,6 @@
         let selectedTeacherId = null;
         let dataInitialized = false;
         let firebaseDataLoaded = false;
-        let mapsApiReady = false;
-        let locationMapInstance = null;
-        let locationMarker = null;
-        let locationAutocomplete = null;
-        let pendingLocationEvent = null;
 
         function canUseDirectFirebase() {
             return !!(window.firebaseDatabase && window.firebaseDbApi);
@@ -824,8 +831,6 @@
                     endTime: '17:00',
                     time: '15:00-17:00',
                     location: 'วัดพระบรมธาตุวรวิหาร ชัยนาท',
-                    locationLat: 15.1785,
-                    locationLng: 100.1239,
                     requiredQuota: 3,
                     assignedTeachers: [1, 2, 3],
                     status: 'assigned'
@@ -839,8 +844,6 @@
                     endTime: '20:00',
                     time: '18:30-20:00',
                     location: 'อาคารวิมลคุณากร',
-                    locationLat: 13.7436,
-                    locationLng: 100.5321,
                     requiredQuota: 5,
                     assignedTeachers: [5, 6, 7, 8, 12],
                     status: 'assigned'
@@ -853,8 +856,6 @@
                     endTime: '12:00',
                     time: '07:00-12:00',
                     location: 'เขื่อนเรียงหิน',
-                    locationLat: 15.1772,
-                    locationLng: 100.1215,
                     requiredQuota: 4,
                     assignedTeachers: [5, 7, 10, 12],
                     status: 'assigned'
@@ -867,8 +868,6 @@
                     endTime: '16:00',
                     time: '07:00-16:00',
                     location: 'โรงเรียนหันคาพิทยาคม',
-                    locationLat: 15.1878,
-                    locationLng: 100.2156,
                     requiredQuota: 5,
                     assignedTeachers: [2, 4, 9, 11, 13],
                     status: 'assigned'
@@ -881,8 +880,6 @@
                     endTime: '12:00',
                     time: '07:00-12:00',
                     location: 'เขื่อนเรียงหิน',
-                    locationLat: 15.1772,
-                    locationLng: 100.1215,
                     requiredQuota: 5,
                     assignedTeachers: [1, 3, 6, 9, 10],
                     status: 'assigned'
@@ -895,8 +892,6 @@
                     endTime: '18:00',
                     time: '16:45-18:00',
                     location: 'วัดพระบรมธาตุวรวิหาร ชัยนาท',
-                    locationLat: 15.1785,
-                    locationLng: 100.1239,
                     requiredQuota: 5,
                     assignedTeachers: [],
                     status: 'pending'
@@ -1564,145 +1559,6 @@
             `;
         }
 
-        function updateLocationInputs(lat, lng, description) {
-            const locationInput = document.getElementById('event-location');
-            const latInput = document.getElementById('event-location-lat');
-            const lngInput = document.getElementById('event-location-lng');
-
-            if (locationInput && description) {
-                locationInput.value = description;
-            }
-
-            if (latInput) {
-                latInput.value = lat != null ? lat : '';
-            }
-            if (lngInput) {
-                lngInput.value = lng != null ? lng : '';
-            }
-        }
-
-        function handleMapSelection(lat, lng, description) {
-            if (!locationMapInstance || typeof google === 'undefined') {
-                return;
-            }
-
-            const mapPosition = new google.maps.LatLng(lat, lng);
-            if (!locationMarker) {
-                locationMarker = new google.maps.Marker({ map: locationMapInstance, position: mapPosition });
-            }
-
-            locationMarker.setPosition(mapPosition);
-            locationMarker.setVisible(true);
-            locationMapInstance.setCenter(mapPosition);
-            locationMapInstance.setZoom(15);
-
-            const resolvedDescription = description && description.trim().length > 0
-                ? description
-                : `พิกัด (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
-
-            updateLocationInputs(lat, lng, resolvedDescription);
-        }
-
-        function initializeLocationMap() {
-            if (!mapsApiReady || typeof google === 'undefined') {
-                return;
-            }
-
-            const mapContainer = document.getElementById('location-map');
-            const locationInput = document.getElementById('event-location');
-
-            if (!mapContainer || !locationInput) {
-                return;
-            }
-
-            locationMapInstance = new google.maps.Map(mapContainer, {
-                center: DEFAULT_MAP_CENTER,
-                zoom: 6,
-                mapTypeControl: false
-            });
-
-            locationMarker = new google.maps.Marker({
-                map: locationMapInstance,
-                visible: false
-            });
-
-            locationAutocomplete = new google.maps.places.Autocomplete(locationInput, {
-                fields: ['geometry', 'formatted_address', 'name']
-            });
-
-            locationAutocomplete.addListener('place_changed', () => {
-                const place = locationAutocomplete.getPlace();
-                if (!place || !place.geometry) {
-                    return;
-                }
-
-                const lat = place.geometry.location.lat();
-                const lng = place.geometry.location.lng();
-                const description = place.formatted_address || place.name;
-                handleMapSelection(lat, lng, description);
-            });
-
-            locationMapInstance.addListener('click', event => {
-                if (!event || !event.latLng) {
-                    return;
-                }
-
-                handleMapSelection(event.latLng.lat(), event.latLng.lng(), document.getElementById('event-location').value);
-            });
-        }
-
-        function prepareLocationPicker(eventData) {
-            if (!mapsApiReady || typeof google === 'undefined') {
-                pendingLocationEvent = eventData || null;
-                return;
-            }
-
-            const mapContainer = document.getElementById('location-map');
-            if (!mapContainer) {
-                return;
-            }
-
-            if (!locationMapInstance) {
-                initializeLocationMap();
-            } else {
-                google.maps.event.trigger(locationMapInstance, 'resize');
-            }
-
-            if (eventData && eventData.locationLat != null && eventData.locationLng != null) {
-                const lat = parseFloat(eventData.locationLat);
-                const lng = parseFloat(eventData.locationLng);
-
-                if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
-                    handleMapSelection(lat, lng, eventData.location);
-                }
-            } else {
-                if (locationMarker) {
-                    locationMarker.setVisible(false);
-                }
-                if (locationMapInstance) {
-                    locationMapInstance.setCenter(DEFAULT_MAP_CENTER);
-                    locationMapInstance.setZoom(6);
-                }
-            }
-        }
-
-        function resetLocationPicker() {
-            if (!mapsApiReady || typeof google === 'undefined') {
-                pendingLocationEvent = null;
-                return;
-            }
-
-            pendingLocationEvent = null;
-
-            if (locationMarker) {
-                locationMarker.setVisible(false);
-            }
-            if (locationMapInstance) {
-                locationMapInstance.setCenter(DEFAULT_MAP_CENTER);
-                locationMapInstance.setZoom(6);
-            }
-        }
-
         // History rendering
         function renderHistory() {
             // Duty distribution
@@ -2306,6 +2162,5 @@
       }
     }
   </script>
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAouBjZHcDpomyZTnb72oGOYckt8t3BYOs&libraries=places&callback=initMap" async defer></script>
  <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'995b9a46b40c072d',t:'MTc2MTY2Njc3MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
