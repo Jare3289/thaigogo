@@ -1,5 +1,10 @@
 const FIREBASE_BASE_URL = 'https://thaievent-7784d-default-rtdb.firebaseio.com';
 
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('index')
+    .setTitle('ระบบจัดการคิวงานพระราชพิธีครู');
+}
+
 function getFirebaseSecret_() {
   return PropertiesService.getScriptProperties().getProperty('FIREBASE_DB_SECRET') || 'oDSyzXHcWvnjTGsvrDPrew6IlreT9KlBLqDpSDij';
 }
