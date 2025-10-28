@@ -44,7 +44,12 @@ function normalizeFirebaseList_(value) {
 
   if (value && typeof value === 'object') {
     return Object.keys(value)
-      .sort()
+      .sort((a, b) => {
+        const numA = Number(a);
+        const numB = Number(b);
+        const bothNumeric = !Number.isNaN(numA) && !Number.isNaN(numB);
+        return bothNumeric ? numA - numB : a.localeCompare(b);
+      })
       .map(key => value[key]);
   }
 
