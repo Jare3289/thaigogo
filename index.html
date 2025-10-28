@@ -11,28 +11,32 @@
         body {
             box-sizing: border-box;
             font-family: 'Sarabun', sans-serif;
+            background: var(--surface-muted);
+            color: #3b1e27;
         }
         
         :root {
-            --primary-bg: #B83280;
-            --secondary-bg: #F8C9DF;
+            --primary-bg: #E1B1C1;
+            --secondary-bg: #894D5B;
             --accent-color: #C4E9F8;
             --success-color: #88A82A;
             --warning-color: #21510A;
+            --surface-muted: #F6EEF1;
         }
         
         .nav-item {
             transition: all 0.3s ease;
             border-radius: 8px;
+            color: inherit;
         }
-        
+
         .nav-item:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(137, 77, 91, 0.12);
         }
-        
+
         .nav-item.active {
-            background: rgba(255, 255, 255, 0.2);
-            border-bottom: 3px solid white;
+            background: rgba(137, 77, 91, 0.18);
+            border-bottom: 3px solid var(--secondary-bg);
         }
         
         .card {
@@ -47,7 +51,7 @@
         }
         
         .btn-primary {
-            background: var(--primary-bg);
+            background: var(--secondary-bg);
             color: white;
             padding: 8px 16px;
             border-radius: 8px;
@@ -55,15 +59,15 @@
             cursor: pointer;
             transition: all 0.3s ease;
         }
-        
+
         .btn-primary:hover {
             background: #6f3b48;
             transform: translateY(-1px);
         }
-        
+
         .btn-danger {
-            background: var(--secondary-bg);
-            color: var(--primary-bg);
+            background: var(--primary-bg);
+            color: var(--secondary-bg);
             padding: 8px 16px;
             border-radius: 8px;
             border: none;
@@ -72,8 +76,8 @@
         }
 
         .btn-danger:hover {
-            background: #d69bab;
-            color: var(--primary-bg);
+            background: #d9a6b7;
+            color: var(--secondary-bg);
         }
         
         .btn-success {
@@ -85,9 +89,9 @@
             cursor: pointer;
             transition: all 0.3s ease;
         }
-        
+
         .btn-success:hover {
-            background: #047857;
+            background: var(--warning-color);
         }
         
         .table {
@@ -103,9 +107,9 @@
         }
         
         .table th {
-            background: var(--secondary-bg);
+            background: var(--primary-bg);
             font-weight: 600;
-            color: #374151;
+            color: #4a2c35;
         }
         
         .table tbody tr:hover {
@@ -159,8 +163,8 @@
         
         .form-input:focus {
             outline: none;
-            border-color: var(--primary-bg);
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            border-color: var(--secondary-bg);
+            box-shadow: 0 0 0 3px rgba(137, 77, 91, 0.1);
         }
         
         .status-badge {
@@ -187,8 +191,8 @@
         
         .queue-score {
             display: inline-block;
-            background: var(--primary-bg);
-            color: white;
+            background: rgba(137, 77, 91, 0.12);
+            color: var(--secondary-bg);
             padding: 4px 8px;
             border-radius: 12px;
             font-weight: 600;
@@ -199,7 +203,7 @@
             width: 48px;
             height: 48px;
             border-radius: 50%;
-            background: var(--primary-bg);
+            background: var(--secondary-bg);
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -212,19 +216,19 @@
         }
 
         .teacher-avatar-large {
-            width: 80px;
-            height: 80px;
+            width: 62px;
+            height: 62px;
             border-radius: 50%;
-            background: var(--primary-bg);
+            background: var(--secondary-bg);
             display: inline-flex;
             align-items: center;
             justify-content: center;
             color: white;
             font-weight: 700;
-            font-size: 28px;
+            font-size: 20px;
             overflow: hidden;
-            border: 4px solid white;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border: 3px solid rgba(255, 255, 255, 0.95);
+            box-shadow: 0 4px 12px rgba(137,77,91,0.15);
         }
         
         .teacher-avatar img {
@@ -232,7 +236,69 @@
             height: 100%;
             object-fit: cover;
         }
-        
+
+        .next-queue-grid {
+            display: grid;
+            gap: 0.5rem;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        }
+
+        @media (min-width: 1280px) {
+            .next-queue-grid {
+                grid-template-columns: repeat(13, minmax(0, 1fr));
+            }
+        }
+
+        .next-queue-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            padding: 0.75rem;
+            border-radius: 14px;
+            background: white;
+            border: 1px solid rgba(137, 77, 91, 0.18);
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.04);
+            min-height: 165px;
+        }
+
+        .next-queue-card .rank-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px 6px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--secondary-bg);
+            background: rgba(137, 77, 91, 0.15);
+            white-space: nowrap;
+        }
+
+        .next-queue-card .queue-mini-stat {
+            display: flex;
+            width: 100%;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 8px;
+            background: rgba(225, 177, 193, 0.25);
+            color: #4a2c35;
+            font-weight: 500;
+        }
+
+        .next-queue-card .queue-mini-stat.is-duty {
+            background: rgba(196, 233, 248, 0.35);
+            color: #2a5a6f;
+        }
+
+        .next-queue-card .queue-mini-stat.is-sub {
+            background: rgba(136, 168, 42, 0.18);
+            color: var(--warning-color);
+        }
+
         .log-entry {
             border-left: 4px solid #e5e7eb;
             padding-left: 12px;
@@ -254,9 +320,9 @@
   <style>@view-transition { navigation: auto; }</style>
   <script src="/_sdk/data_sdk.js" type="text/javascript"></script>
  </head>
- <body class="bg-gray-100">
+ <body>
   <div class="flex flex-col h-screen"><!-- Top Navigation -->
-   <div class="text-white shadow-lg" style="background: var(--primary-bg);">
+   <div class="shadow-lg" style="background: var(--primary-bg); color: #4a2c35;">
     <div class="px-6 py-4">
      <div class="flex items-center justify-between">
       <div>
@@ -284,7 +350,7 @@
      </div>
     </div>
    </div><!-- Main Content -->
-   <div class="flex-1 overflow-auto bg-gray-100"><!-- Dashboard View -->
+   <div class="flex-1 overflow-auto" style="background: var(--surface-muted);"><!-- Dashboard View -->
     <div id="dashboard-view" class="view p-6">
      <h2 class="text-2xl font-bold text-gray-800 mb-6">หน้าหลัก - ภาพรวมระบบ</h2><!-- Next Queue Section - แนวนอนที่บนสุด -->
      <div class="card p-6 mb-8">
@@ -293,13 +359,13 @@
       </div>
      </div>
      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-      <div class="card p-6 border-l-4" style="border-left-color: var(--primary-bg);">
+      <div class="card p-6 border-l-4" style="border-left-color: var(--secondary-bg);">
        <div class="flex items-center">
-        <div class="p-3 rounded-full mr-4" style="background: rgba(137, 77, 91, 0.12); color: var(--primary-bg);"><span class="text-2xl">📅</span>
+        <div class="p-3 rounded-full mr-4" style="background: rgba(225, 177, 193, 0.35); color: var(--secondary-bg);"><span class="text-2xl">📅</span>
         </div>
         <div>
          <p class="text-sm text-gray-600">งานทั้งหมด</p>
-         <p class="text-2xl font-bold" style="color: var(--primary-bg);" id="total-events">0</p>
+         <p class="text-2xl font-bold" style="color: var(--secondary-bg);" id="total-events">0</p>
         </div>
        </div>
       </div>
@@ -325,11 +391,11 @@
       </div>
       <div class="card p-6 border-l-4" style="border-left-color: var(--secondary-bg);">
        <div class="flex items-center">
-        <div class="p-3 rounded-full mr-4" style="background: rgba(248, 201, 223, 0.35); color: var(--primary-bg);"><span class="text-2xl">👥</span>
+        <div class="p-3 rounded-full mr-4" style="background: rgba(225, 177, 193, 0.35); color: var(--secondary-bg);"><span class="text-2xl">👥</span>
         </div>
         <div>
          <p class="text-sm text-gray-600">ครูทั้งหมด</p>
-         <p class="text-2xl font-bold" style="color: var(--primary-bg);" id="total-teachers">0</p>
+         <p class="text-2xl font-bold" style="color: var(--secondary-bg);" id="total-teachers">0</p>
         </div>
        </div>
       </div>
@@ -351,8 +417,8 @@
        </div>
       </div>
      </div><!-- Queue Score Explanation -->
-     <div class="card p-8 mb-8 border-2" style="background: rgba(137, 77, 91, 0.05); border-color: var(--primary-bg);">
-      <h3 class="text-xl font-bold mb-6 flex items-center" style="color: var(--primary-bg);"><span class="mr-3 text-2xl">🎯</span>ระบบคะแนนความเป็นธรรม - วิธีการทำงาน</h3>
+     <div class="card p-8 mb-8 border-2" style="background: rgba(225, 177, 193, 0.2); border-color: var(--secondary-bg);">
+      <h3 class="text-xl font-bold mb-6 flex items-center" style="color: var(--secondary-bg);"><span class="mr-3 text-2xl">🎯</span>ระบบคะแนนความเป็นธรรม - วิธีการทำงาน</h3>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
        <div class="p-4 rounded-lg" style="background: rgba(136, 168, 42, 0.1); border-left: 4px solid #88A82A;">
         <h4 class="font-bold text-gray-800 mb-3 flex items-center"><span class="mr-2">🏁</span>หลักการเริ่มต้น</h4>
@@ -372,7 +438,7 @@
          <li>• คะแนนสะสมตลอดปีการศึกษา</li>
         </ul>
        </div>
-       <div class="p-4 rounded-lg" style="background: rgba(248, 201, 223, 0.35); border-left: 4px solid var(--secondary-bg);">
+       <div class="p-4 rounded-lg" style="background: rgba(225, 177, 193, 0.35); border-left: 4px solid var(--secondary-bg);">
         <h4 class="font-bold text-gray-800 mb-3 flex items-center"><span class="mr-2">⚖️</span>ความยุติธรรม</h4>
         <ul class="text-sm text-gray-700 space-y-2">
          <li>• จัดคิวอัตโนมัติตามคะแนนต่ำสุด</li>
@@ -383,7 +449,7 @@
        </div>
       </div>
       <div class="mt-6 p-4 rounded-lg" style="background: rgba(137, 77, 91, 0.05); border: 1px solid rgba(137, 77, 91, 0.2);">
-       <p class="text-center font-medium" style="color: var(--primary-bg);">💡 <strong>หลักสำคัญ:</strong> ครูที่มีคะแนนน้อยที่สุดจะได้รับโอกาสออกงานก่อน เพื่อความเป็นธรรมในการกระจายภาระงาน</p>
+      <p class="text-center font-medium" style="color: var(--secondary-bg);">💡 <strong>หลักสำคัญ:</strong> ครูที่มีคะแนนน้อยที่สุดจะได้รับโอกาสออกงานก่อน เพื่อความเป็นธรรมในการกระจายภาระงาน</p>
       </div>
      </div>
     </div><!-- Events Management View -->
@@ -1087,38 +1153,27 @@
                 const rankIcon = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🎯';
 
                 return `
-                    <div class="flex-shrink-0 w-64 md:w-72 bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-lg transition-all duration-300">
-                        <div class="flex flex-col items-center text-center gap-3">
-                            <span class="inline-flex items-center justify-center text-xs font-semibold text-white px-3 py-1 rounded-full" style="background: ${PRIMARY_COLOR};">
-                                ${rankIcon} อันดับ ${teacher.queueRank}
-                            </span>
-                            ${createTeacherAvatar(teacher, true)}
-                            <div>
-                                <h4 class="font-bold text-gray-900 text-base md:text-lg">${teacher.name}</h4>
-                                <p class="text-sm text-gray-600">${teacher.position}</p>
-                                ${teacher.lastEventDate ? `<p class="text-xs text-gray-500 mt-1">งานล่าสุด: ${formatDateThai(teacher.lastEventDate)}</p>` : ''}
-                            </div>
-                            <div class="grid grid-cols-3 gap-2 w-full">
-                                <div class="rounded-lg p-2 text-center" style="background: rgba(137, 77, 91, 0.08);">
-                                    <p class="text-[11px] text-gray-500">คะแนนคิว</p>
-                                    <p class="text-lg font-bold" style="color: ${PRIMARY_COLOR};">${teacher.queueScore}</p>
-                                </div>
-                                <div class="bg-gray-50 rounded-lg p-2 text-center">
-                                    <p class="text-[11px] text-gray-500">งานทั้งหมด</p>
-                                    <p class="text-lg font-bold" style="color: var(--success-color);">${teacher.totalDuties}</p>
-                                </div>
-                                <div class="bg-gray-50 rounded-lg p-2 text-center">
-                                    <p class="text-[11px] text-gray-500">แทน</p>
-                                    <p class="text-lg font-bold" style="color: var(--primary-bg);">${teacher.swapCount || 0}</p>
-                                </div>
-                            </div>
+                    <div class="next-queue-card">
+                        <div class="w-full flex items-center justify-between text-[11px] text-gray-500 font-semibold">
+                            <span class="rank-badge">${rankIcon} #${teacher.queueRank}</span>
+                            <span class="text-sm font-bold text-[#5b2d38]">คะแนน ${teacher.queueScore}</span>
+                        </div>
+                        ${createTeacherAvatar(teacher, true)}
+                        <div class="text-center space-y-1 w-full">
+                            <h4 class="font-semibold text-sm text-gray-900 leading-tight">${teacher.name}</h4>
+                            <p class="text-[11px] text-gray-500 leading-tight">${teacher.position}</p>
+                            ${teacher.lastEventDate ? `<p class="text-[10px] text-gray-400 leading-tight">ล่าสุด ${formatDateThai(teacher.lastEventDate)}</p>` : ''}
+                        </div>
+                        <div class="w-full space-y-1">
+                            <div class="queue-mini-stat is-duty"><span>งาน</span><span class="font-semibold text-gray-700">${teacher.totalDuties}</span></div>
+                            <div class="queue-mini-stat is-sub"><span>แทน</span><span class="font-semibold text-gray-700">${teacher.swapCount || 0}</span></div>
                         </div>
                     </div>
                 `;
             }).join('') : '<p class="text-gray-500 text-center py-6">ยังไม่มีข้อมูลครู</p>';
 
             document.getElementById('next-queue').innerHTML = `
-                <div class="flex items-stretch gap-4 overflow-x-auto pb-2">
+                <div class="next-queue-grid">
                     ${nextQueueHtml}
                 </div>
             `;
@@ -1288,9 +1343,9 @@
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-3 gap-4 mb-6 p-4 rounded-lg" style="background: rgba(184, 50, 128, 0.05);">
+                        <div class="grid grid-cols-3 gap-4 mb-6 p-4 rounded-lg" style="background: rgba(225, 177, 193, 0.2);">
                             <div class="text-center">
-                                <p class="text-2xl font-bold" style="color: var(--primary-bg);">${teacher.totalDuties}</p>
+                                <p class="text-2xl font-bold" style="color: var(--secondary-bg);">${teacher.totalDuties}</p>
                                 <p class="text-xs text-gray-600">งานทั้งหมด</p>
                             </div>
                             <div class="text-center">
@@ -1359,7 +1414,7 @@
                         ${createTeacherAvatar(teacher)}
                         <span class="font-medium ml-3">${teacher.name}</span>
                     </div>
-                    <span class="font-semibold" style="color: var(--primary-bg);">${teacher.swapCount} ครั้ง</span>
+                    <span class="font-semibold" style="color: var(--secondary-bg);">${teacher.swapCount} ครั้ง</span>
                 </div>
             `).join('') : '<p class="text-gray-500 text-center py-4">ยังไม่มีการแทน</p>';
             document.getElementById('substitution-stats').innerHTML = substitutionStatsHtml;
