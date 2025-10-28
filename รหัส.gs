@@ -1,7 +1,7 @@
 // =========================
 // File: Code.gs  (Apps Script)
 // =========================
-const APP_TITLE = 'ระบบบริหารข้อมูลนักเรียน';
+const APP_TITLE = 'ระบบจัดการออกงานครู';
 
 function doGet(e) {
   return HtmlService.createHtmlOutputFromFile('index')
