@@ -12,18 +12,30 @@
             box-sizing: border-box;
             font-family: 'Sarabun', sans-serif;
             background: var(--surface-muted);
-            color: #3b1e27;
+            color: #2c1720;
         }
-        
+
         :root {
             --primary-bg: #E1B1C1;
             --secondary-bg: #894D5B;
             --accent-color: #C4E9F8;
             --success-color: #88A82A;
             --warning-color: #21510A;
-            --surface-muted: #F6EEF1;
+            --surface-muted: #f8f1f4;
         }
         
+        .view {
+            padding: 1.5rem 1rem;
+        }
+
+        .view-container {
+            max-width: 1100px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
         .nav-item {
             transition: all 0.3s ease;
             border-radius: 8px;
@@ -44,6 +56,7 @@
             border-radius: 12px;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             transition: all 0.3s ease;
+            border: 1px solid rgba(137, 77, 91, 0.08);
         }
         
         .card:hover {
@@ -98,22 +111,32 @@
             width: 100%;
             border-collapse: collapse;
         }
-        
+
         .table th,
         .table td {
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid #e5e7eb;
+            font-size: 14px;
         }
-        
+
         .table th {
             background: var(--primary-bg);
             font-weight: 600;
             color: #4a2c35;
         }
-        
+
+        .table tbody tr {
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
         .table tbody tr:hover {
-            background: #f9fafb;
+            background: rgba(225, 177, 193, 0.25);
+        }
+
+        .table tbody tr.is-active {
+            background: rgba(137, 77, 91, 0.12);
         }
         
         .modal {
@@ -239,8 +262,8 @@
 
         .next-queue-grid {
             display: grid;
-            gap: 0.5rem;
-            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 0.4rem;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
         }
 
         @media (min-width: 1280px) {
@@ -254,22 +277,22 @@
             flex-direction: column;
             align-items: center;
             justify-content: space-between;
-            gap: 0.5rem;
-            padding: 0.75rem;
-            border-radius: 14px;
+            gap: 0.35rem;
+            padding: 0.5rem;
+            border-radius: 12px;
             background: white;
             border: 1px solid rgba(137, 77, 91, 0.18);
-            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.04);
-            min-height: 165px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+            min-height: 140px;
         }
 
         .next-queue-card .rank-badge {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            padding: 2px 6px;
+            padding: 1px 6px;
             border-radius: 9999px;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 600;
             color: var(--secondary-bg);
             background: rgba(137, 77, 91, 0.15);
@@ -281,9 +304,9 @@
             width: 100%;
             align-items: center;
             justify-content: space-between;
-            font-size: 11px;
-            padding: 2px 6px;
-            border-radius: 8px;
+            font-size: 10px;
+            padding: 2px 5px;
+            border-radius: 6px;
             background: rgba(225, 177, 193, 0.25);
             color: #4a2c35;
             font-weight: 500;
@@ -315,6 +338,31 @@
         
         .log-entry.substitution {
             border-left-color: var(--secondary-bg);
+        }
+
+        .teacher-detail-card {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .teacher-detail-card .detail-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            color: #4b5563;
+        }
+
+        .teacher-detail-card .detail-row span:first-child {
+            font-weight: 600;
+            color: #374151;
+        }
+
+        #location-map {
+            width: 100%;
+            height: 220px;
+            border-radius: 12px;
+            border: 1px solid rgba(137, 77, 91, 0.3);
         }
     </style>
   <style>@view-transition { navigation: auto; }</style>
@@ -351,14 +399,15 @@
     </div>
    </div><!-- Main Content -->
    <div class="flex-1 overflow-auto" style="background: var(--surface-muted);"><!-- Dashboard View -->
-    <div id="dashboard-view" class="view p-6">
-     <h2 class="text-2xl font-bold text-gray-800 mb-6">หน้าหลัก - ภาพรวมระบบ</h2><!-- Next Queue Section - แนวนอนที่บนสุด -->
-     <div class="card p-6 mb-8">
+    <div id="dashboard-view" class="view">
+     <div class="view-container">
+      <h2 class="text-2xl font-bold text-gray-800">หน้าหลัก - ภาพรวมระบบ</h2><!-- Next Queue Section - แนวนอนที่บนสุด -->
+      <div class="card p-5">
       <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center"><span class="mr-2">⏭️</span>คิวต่อไป - ครูทั้งหมดเรียงตามลำดับความสำคัญ</h3>
       <div id="next-queue"><!-- Next queue will be populated here -->
       </div>
-     </div>
-     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       <div class="card p-6 border-l-4" style="border-left-color: var(--secondary-bg);">
        <div class="flex items-center">
         <div class="p-3 rounded-full mr-4" style="background: rgba(225, 177, 193, 0.35); color: var(--secondary-bg);"><span class="text-2xl">📅</span>
@@ -399,13 +448,13 @@
         </div>
        </div>
       </div>
-     </div><!-- Latest Event Section -->
-     <div class="card p-6 mb-8">
+      </div><!-- Latest Event Section -->
+      <div class="card p-6">
       <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center"><span class="mr-2">🎯</span>งานล่าสุดที่จัดคิวแล้ว</h3>
       <div id="latest-event" class="space-y-3"><!-- Latest event will be populated here -->
       </div>
-     </div>
-     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <div class="card p-6">
        <h3 class="text-lg font-semibold text-gray-800 mb-4">งานที่ต้องจัดคิวเร่งด่วน</h3>
        <div id="urgent-events" class="space-y-3"><!-- Urgent events will be populated here -->
@@ -416,8 +465,8 @@
        <div id="top-queue-teachers" class="space-y-3"><!-- Top queue teachers will be populated here -->
        </div>
       </div>
-     </div><!-- Queue Score Explanation -->
-     <div class="card p-8 mb-8 border-2" style="background: rgba(225, 177, 193, 0.2); border-color: var(--secondary-bg);">
+      </div><!-- Queue Score Explanation -->
+      <div class="card p-8 border-2" style="background: rgba(225, 177, 193, 0.2); border-color: var(--secondary-bg);">
       <h3 class="text-xl font-bold mb-6 flex items-center" style="color: var(--secondary-bg);"><span class="mr-3 text-2xl">🎯</span>ระบบคะแนนความเป็นธรรม - วิธีการทำงาน</h3>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
        <div class="p-4 rounded-lg" style="background: rgba(136, 168, 42, 0.1); border-left: 4px solid #88A82A;">
@@ -448,46 +497,73 @@
         </ul>
        </div>
       </div>
-      <div class="mt-6 p-4 rounded-lg" style="background: rgba(137, 77, 91, 0.05); border: 1px solid rgba(137, 77, 91, 0.2);">
-      <p class="text-center font-medium" style="color: var(--secondary-bg);">💡 <strong>หลักสำคัญ:</strong> ครูที่มีคะแนนน้อยที่สุดจะได้รับโอกาสออกงานก่อน เพื่อความเป็นธรรมในการกระจายภาระงาน</p>
-      </div>
-     </div>
-    </div><!-- Events Management View -->
-    <div id="events-view" class="view p-6 hidden">
-     <div class="flex justify-between items-center mb-6">
-      <h2 class="text-2xl font-bold text-gray-800">ออกงาน</h2><button class="btn-primary" onclick="openEventModal()"> <span class="mr-2">+</span>เพิ่มงานใหม่ </button>
-     </div>
-     <div id="events-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"><!-- Event cards will be populated here -->
-     </div>
-    </div><!-- Teachers Management View -->
-    <div id="teachers-view" class="view p-6 hidden">
-     <div class="flex justify-between items-center mb-6">
-      <h2 class="text-2xl font-bold text-gray-800">ครู</h2><button class="btn-primary" onclick="openTeacherModal()"> <span class="mr-2">+</span>เพิ่มครูใหม่ </button>
-     </div>
-     <div id="teachers-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"><!-- Teacher cards will be populated here -->
-     </div>
-    </div><!-- History View -->
-    <div id="history-view" class="view p-6 hidden">
-     <h2 class="text-2xl font-bold text-gray-800 mb-6">บันทึกการปฏิบัติงานและประวัติ</h2>
-     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-      <div class="card p-6">
-       <h3 class="text-lg font-semibold text-gray-800 mb-4">สถิติรวมการกระจายงาน</h3>
-       <div id="duty-distribution" class="space-y-2"><!-- Duty distribution will be populated here -->
-       </div>
-      </div>
-      <div class="card p-6">
-       <h3 class="text-lg font-semibold text-gray-800 mb-4">สถิติการแทนงาน</h3>
-       <div id="substitution-stats" class="space-y-2"><!-- Substitution stats will be populated here -->
-       </div>
-      </div>
-     </div>
-     <div class="card p-6">
-      <h3 class="text-lg font-semibold text-gray-800 mb-4">ประวัติการดำเนินการ</h3>
-      <div id="activity-log" class="space-y-3 max-h-96 overflow-y-auto"><!-- Activity log will be populated here -->
+      <div class="p-4 rounded-lg" style="background: rgba(137, 77, 91, 0.05); border: 1px solid rgba(137, 77, 91, 0.2);">
+       <p class="text-center font-medium" style="color: var(--secondary-bg);">💡 <strong>หลักสำคัญ:</strong> ครูที่มีคะแนนน้อยที่สุดจะได้รับโอกาสออกงานก่อน เพื่อความเป็นธรรมในการกระจายภาระงาน</p>
       </div>
      </div>
     </div>
-   </div>
+    </div><!-- Events Management View -->
+    <div id="events-view" class="view hidden">
+     <div class="view-container">
+      <div class="flex justify-between items-center">
+       <h2 class="text-2xl font-bold text-gray-800">ออกงาน</h2><button class="btn-primary" onclick="openEventModal()"> <span class="mr-2">+</span>เพิ่มงานใหม่ </button>
+      </div>
+      <div id="events-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"><!-- Event cards will be populated here -->
+      </div>
+     </div>
+    </div><!-- Teachers Management View -->
+    <div id="teachers-view" class="view hidden">
+     <div class="view-container">
+      <div class="flex justify-between items-center">
+       <h2 class="text-2xl font-bold text-gray-800">ครู</h2><button class="btn-primary" onclick="openTeacherModal()"> <span class="mr-2">+</span>เพิ่มครูใหม่ </button>
+      </div>
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+       <div class="xl:col-span-2 card p-0">
+        <div class="overflow-x-auto">
+         <table class="table">
+          <thead>
+           <tr>
+            <th>ลำดับ</th>
+            <th>ชื่อครู</th>
+            <th>ตำแหน่ง</th>
+            <th>คะแนนคิว</th>
+            <th>ออกงาน</th>
+            <th>แทน</th>
+           </tr>
+          </thead>
+          <tbody id="teachers-table-body"></tbody>
+         </table>
+        </div>
+       </div>
+       <div id="teacher-detail-panel" class="card p-6 teacher-detail-card">
+        <p class="text-sm text-gray-500">เลือกครูจากตารางเพื่อดูรายละเอียดและจัดการข้อมูล</p>
+       </div>
+      </div>
+     </div>
+    </div><!-- History View -->
+    <div id="history-view" class="view hidden">
+     <div class="view-container">
+      <h2 class="text-2xl font-bold text-gray-800">บันทึกการปฏิบัติงานและประวัติ</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+       <div class="card p-6">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">สถิติรวมการกระจายงาน</h3>
+        <div id="duty-distribution" class="space-y-2"><!-- Duty distribution will be populated here -->
+        </div>
+       </div>
+       <div class="card p-6">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">สถิติการแทนงาน</h3>
+        <div id="substitution-stats" class="space-y-2"><!-- Substitution stats will be populated here -->
+        </div>
+       </div>
+      </div>
+      <div class="card p-6">
+       <h3 class="text-lg font-semibold text-gray-800 mb-4">ประวัติการดำเนินการ</h3>
+       <div id="activity-log" class="space-y-3 max-h-96 overflow-y-auto"><!-- Activity log will be populated here -->
+       </div>
+      </div>
+     </div>
+    </div>
+    </div>
   </div><!-- Event Modal -->
   <div id="event-modal" class="modal">
    <div class="modal-content w-full max-w-2xl">
@@ -495,20 +571,29 @@
      <h3 id="event-modal-title" class="text-xl font-bold text-gray-800">เพิ่มงานใหม่</h3><button onclick="closeEventModal()" class="text-gray-500 hover:text-gray-700"> <span class="text-2xl">×</span> </button>
     </div>
     <form id="event-form">
-     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="form-group md:col-span-2"><label class="form-label">ชื่องาน</label> <input type="text" id="event-name" class="form-input" required>
+     <div class="grid grid-cols-1 gap-4">
+      <div class="form-group"><label class="form-label">ชื่องาน</label> <input type="text" id="event-name" class="form-input" required>
       </div>
-      <div class="form-group md:col-span-2"><label class="form-label">รายละเอียด</label> <textarea id="event-details" class="form-input" rows="3" placeholder="รายละเอียดเพิ่มเติมของงาน"></textarea>
+      <div class="form-group"><label class="form-label">รายละเอียด</label> <textarea id="event-details" class="form-input" rows="3" placeholder="รายละเอียดเพิ่มเติมของงาน"></textarea>
       </div>
-      <div class="form-group"><label class="form-label">วันที่</label> <input type="date" id="event-date" class="form-input" required>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+       <div class="form-group"><label class="form-label">วันที่</label> <input type="date" id="event-date" class="form-input" required>
+       </div>
+       <div class="form-group md:col-span-1"><label class="form-label">เวลาเริ่มและสิ้นสุด</label>
+        <div class="flex flex-col sm:flex-row gap-3">
+         <input type="time" id="event-start-time" class="form-input sm:flex-1" required>
+         <input type="time" id="event-end-time" class="form-input sm:flex-1" required>
+        </div>
+       </div>
       </div>
-      <div class="form-group"><label class="form-label">เวลาเริ่ม</label> <input type="time" id="event-start-time" class="form-input" required>
+      <div class="form-group"><label class="form-label">สถานที่</label>
+       <input type="text" id="event-location" class="form-input" placeholder="ค้นหาสถานที่จาก Google Maps" required>
+       <div class="text-xs text-gray-500 mt-2">ค้นหาแล้วเลือกจากรายการ หรือคลิกบนแผนที่เพื่อระบุจุดจัดงาน</div>
+       <div id="location-map" class="mt-3"></div>
+       <input type="hidden" id="event-location-lat">
+       <input type="hidden" id="event-location-lng">
       </div>
-      <div class="form-group"><label class="form-label">เวลาสิ้นสุด</label> <input type="time" id="event-end-time" class="form-input" required>
-      </div>
-      <div class="form-group md:col-span-2"><label class="form-label">สถานที่</label> <input type="text" id="event-location" class="form-input" required>
-      </div>
-      <div class="form-group"><label class="form-label">จำนวนครูที่ต้องการ</label> <input type="number" id="event-quota" class="form-input" min="1" required>
+      <div class="form-group md:w-1/2"><label class="form-label">จำนวนครูที่ต้องการ</label> <input type="number" id="event-quota" class="form-input" min="1" required>
       </div>
      </div>
      <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="closeEventModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
@@ -616,6 +701,7 @@
 
         const PRIMARY_COLOR = '#894D5B';
         const SECONDARY_COLOR = '#E1B1C1';
+        const DEFAULT_MAP_CENTER = { lat: 13.7563, lng: 100.5018 };
 
         // Data structures
         let systemConfig = { ...defaultConfig };
@@ -624,8 +710,14 @@
         let activityLog = [];
         let currentEventId = null;
         let currentTeacherId = null;
+        let selectedTeacherId = null;
         let dataInitialized = false;
         let firebaseDataLoaded = false;
+        let mapsApiReady = false;
+        let locationMapInstance = null;
+        let locationMarker = null;
+        let locationAutocomplete = null;
+        let pendingLocationEvent = null;
 
         function canUseDirectFirebase() {
             return !!(window.firebaseDatabase && window.firebaseDbApi);
@@ -732,6 +824,8 @@
                     endTime: '17:00',
                     time: '15:00-17:00',
                     location: 'วัดพระบรมธาตุวรวิหาร ชัยนาท',
+                    locationLat: 15.1785,
+                    locationLng: 100.1239,
                     requiredQuota: 3,
                     assignedTeachers: [1, 2, 3],
                     status: 'assigned'
@@ -739,9 +833,14 @@
                 {
                     eventId: 2,
                     eventName: 'จุดเทียนชัยถวายพระพร',
+                    details: 'พิธีจุดเทียนชัยถวายพระพรและจัดขบวนแสดงความจงรักภักดี',
                     date: '2024-08-12',
+                    startTime: '18:30',
+                    endTime: '20:00',
                     time: '18:30-20:00',
                     location: 'อาคารวิมลคุณากร',
+                    locationLat: 13.7436,
+                    locationLng: 100.5321,
                     requiredQuota: 5,
                     assignedTeachers: [5, 6, 7, 8, 12],
                     status: 'assigned'
@@ -750,8 +849,12 @@
                     eventId: 3,
                     eventName: 'วันคล้ายวันประสูตรสมเด็จพระเจ้าลูกเธอ เจ้าฟ้าสิริวัณณวรี นารีรัตนราชกัญญา',
                     date: '2025-01-08',
+                    startTime: '07:00',
+                    endTime: '12:00',
                     time: '07:00-12:00',
                     location: 'เขื่อนเรียงหิน',
+                    locationLat: 15.1772,
+                    locationLng: 100.1215,
                     requiredQuota: 4,
                     assignedTeachers: [5, 7, 10, 12],
                     status: 'assigned'
@@ -760,8 +863,12 @@
                     eventId: 4,
                     eventName: 'วันคล้ายวันสถาปนากระทรวงศึกษาธิการ 133 ปี',
                     date: '2025-04-01',
+                    startTime: '07:00',
+                    endTime: '16:00',
                     time: '07:00-16:00',
                     location: 'โรงเรียนหันคาพิทยาคม',
+                    locationLat: 15.1878,
+                    locationLng: 100.2156,
                     requiredQuota: 5,
                     assignedTeachers: [2, 4, 9, 11, 13],
                     status: 'assigned'
@@ -770,8 +877,12 @@
                     eventId: 5,
                     eventName: 'วันคล้ายวันพระราชสมภพ ในหลวง',
                     date: '2024-07-28',
+                    startTime: '07:00',
+                    endTime: '12:00',
                     time: '07:00-12:00',
                     location: 'เขื่อนเรียงหิน',
+                    locationLat: 15.1772,
+                    locationLng: 100.1215,
                     requiredQuota: 5,
                     assignedTeachers: [1, 3, 6, 9, 10],
                     status: 'assigned'
@@ -780,8 +891,12 @@
                     eventId: 6,
                     eventName: 'ฟังสวดอภิธรรมสมเด็จพระราชินีนาถ',
                     date: '2024-10-28',
+                    startTime: '16:45',
+                    endTime: '18:00',
                     time: '16:45-18:00',
                     location: 'วัดพระบรมธาตุวรวิหาร ชัยนาท',
+                    locationLat: 15.1785,
+                    locationLng: 100.1239,
                     requiredQuota: 5,
                     assignedTeachers: [],
                     status: 'pending'
@@ -948,6 +1063,8 @@
                 shouldSeedDefaults = true;
             }
 
+            selectedTeacherId = null;
+
             if (Array.isArray(data.events) && data.events.length > 0) {
                 events = data.events;
             } else {
@@ -1025,13 +1142,40 @@
         }
 
         function formatDateThai(dateStr) {
+            if (!dateStr) {
+                return '-';
+            }
+
             const date = new Date(dateStr);
+            if (Number.isNaN(date.getTime())) {
+                return '-';
+            }
+
             const buddhistYear = date.getFullYear() + 543;
             const months = [
                 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
                 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
             ];
             return `${date.getDate()} ${months[date.getMonth()]} ${buddhistYear}`;
+        }
+
+        function formatDateTimeThai(value) {
+            if (!value) {
+                return '-';
+            }
+
+            const date = value instanceof Date ? value : new Date(value);
+            if (Number.isNaN(date.getTime())) {
+                return '-';
+            }
+
+            return date.toLocaleString('th-TH', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
         }
 
         function getTeacherById(id) {
@@ -1043,30 +1187,18 @@
         }
 
         // ฟังก์ชันสำหรับหาครูที่ควรได้รับงานต่อไป (หลีกเลี่ยงคนที่ออกงานล่าสุด)
-        function getNextQueueTeachers() {
-            // หางานล่าสุดที่จัดคิวแล้ว
-            const latestEvent = events
-                .filter(e => e.status === 'assigned' && e.assignedTeachers.length > 0)
-                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+        function getNextQueueTeachers(limit = 13) {
+            return [...teachers]
+                .sort((a, b) => {
+                    if (a.queueScore !== b.queueScore) {
+                        return a.queueScore - b.queueScore;
+                    }
 
-            let availableTeachers = [...teachers];
-
-            // ถ้ามีงานล่าสุด ให้หลีกเลี่ยงครูที่ออกงานล่าสุด
-            if (latestEvent) {
-                const recentParticipants = latestEvent.assignedTeachers;
-                availableTeachers = teachers.filter(t => !recentParticipants.includes(t.teacherId));
-                
-                // ถ้าครูที่เหลือน้อยเกินไป ให้เอาครูที่ออกงานล่าสุดกลับมาบางคน
-                if (availableTeachers.length < 4) {
-                    const recentTeachers = teachers.filter(t => recentParticipants.includes(t.teacherId));
-                    availableTeachers = [...availableTeachers, ...recentTeachers];
-                }
-            }
-
-            // เรียงตามคะแนนต่ำสุดก่อน และเอา 4 คนแรก
-            return availableTeachers
-                .sort((a, b) => a.queueScore - b.queueScore)
-                .slice(0, 4);
+                    const dateA = a.lastEventDate ? new Date(a.lastEventDate) : new Date(0);
+                    const dateB = b.lastEventDate ? new Date(b.lastEventDate) : new Date(0);
+                    return dateA - dateB;
+                })
+                .slice(0, limit);
         }
 
         // Navigation
@@ -1145,8 +1277,7 @@
             document.getElementById('latest-event').innerHTML = latestEventHtml;
 
             // Render next queue (all teachers sorted by queue score, displayed horizontally)
-            const nextQueueTeachers = [...teachers]
-                .sort((a, b) => a.queueScore - b.queueScore)
+            const nextQueueTeachers = getNextQueueTeachers(13)
                 .map((teacher, index) => ({ ...teacher, queueRank: index + 1 }));
 
             const nextQueueHtml = nextQueueTeachers.length > 0 ? nextQueueTeachers.map((teacher, index) => {
@@ -1315,80 +1446,261 @@
             document.getElementById('events-cards').innerHTML = eventsHtml;
         }
 
-        // Teachers cards rendering
+        // Teachers table rendering
         function renderTeachersTable() {
-            const sortedTeachers = [...teachers].sort((a, b) => a.queueScore - b.queueScore);
-            
-            const teachersHtml = sortedTeachers.map((teacher, index) => {
-                const queueRank = index + 1;
-                const priorityLevel = teacher.queueScore <= 15 ? 'สูงมาก' : 
-                                   teacher.queueScore <= 30 ? 'สูง' : 
-                                   teacher.queueScore <= 50 ? 'ปานกลาง' : 'ต่ำ';
-                const priorityColor = teacher.queueScore <= 15 ? '#88A82A' :
-                                    teacher.queueScore <= 30 ? '#C4E9F8' :
-                                    teacher.queueScore <= 50 ? SECONDARY_COLOR : PRIMARY_COLOR;
-                const rankIcon = queueRank <= 3 ? '🥇' : queueRank <= 6 ? '🥈' : '🥉';
-                
+            const tbody = document.getElementById('teachers-table-body');
+            if (!tbody) {
+                return;
+            }
+
+            const sortedTeachers = [...teachers]
+                .sort((a, b) => {
+                    if (a.queueScore !== b.queueScore) {
+                        return a.queueScore - b.queueScore;
+                    }
+                    const dateA = a.lastEventDate ? new Date(a.lastEventDate) : new Date(0);
+                    const dateB = b.lastEventDate ? new Date(b.lastEventDate) : new Date(0);
+                    return dateA - dateB;
+                })
+                .map((teacher, index) => ({ ...teacher, queueRank: index + 1 }));
+
+            if (sortedTeachers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-500">ยังไม่มีข้อมูลครู</td></tr>';
+                renderTeacherDetail(null);
+                return;
+            }
+
+            if (!selectedTeacherId || !sortedTeachers.some(t => t.teacherId === selectedTeacherId)) {
+                selectedTeacherId = sortedTeachers[0].teacherId;
+            }
+
+            tbody.innerHTML = sortedTeachers.map(teacher => {
+                const isActive = teacher.teacherId === selectedTeacherId;
                 return `
-                    <div class="card p-6 hover:shadow-lg transition-all duration-300 border-l-4" style="border-left-color: ${priorityColor};">
-                        <div class="flex flex-col items-center text-center mb-6">
-                            ${createTeacherAvatar(teacher, true)}
-                            <div class="mt-4">
-                                <h3 class="font-bold text-gray-800 text-xl mb-1">${teacher.name}</h3>
-                                <p class="text-sm text-gray-600 mb-2">${teacher.position}</p>
-                                <div class="flex items-center justify-center mb-2">
-                                    <span class="mr-2">${rankIcon}</span>
-                                    <span class="text-sm font-medium" style="color: ${priorityColor};">ลำดับที่ ${queueRank}</span>
+                    <tr class="${isActive ? 'is-active' : ''}" onclick="showTeacherDetail(${teacher.teacherId})">
+                        <td class="font-medium text-gray-700">${teacher.queueRank}</td>
+                        <td>
+                            <div class="flex items-center space-x-3">
+                                ${createTeacherAvatar(teacher)}
+                                <div>
+                                    <p class="font-semibold text-gray-800">${teacher.name}</p>
+                                    ${teacher.lastEventDate ? `<p class="text-xs text-gray-500">ล่าสุด ${formatDateThai(teacher.lastEventDate)}</p>` : ''}
                                 </div>
                             </div>
-                        </div>
-
-                        <div class="grid grid-cols-3 gap-4 mb-6 p-4 rounded-lg" style="background: rgba(225, 177, 193, 0.2);">
-                            <div class="text-center">
-                                <p class="text-2xl font-bold" style="color: var(--secondary-bg);">${teacher.totalDuties}</p>
-                                <p class="text-xs text-gray-600">งานทั้งหมด</p>
-                            </div>
-                            <div class="text-center">
-                                <p class="text-2xl font-bold" style="color: ${priorityColor};">${teacher.queueScore}</p>
-                                <p class="text-xs text-gray-600">คะแนนสะสม</p>
-                            </div>
-                            <div class="text-center">
-                                <p class="text-2xl font-bold" style="color: var(--secondary-bg);">${teacher.swapCount ?? 0}</p>
-                                <p class="text-xs text-gray-600">ครั้งที่แทน</p>
-                            </div>
-                        </div>
-
-                        <div class="mb-6">
-                            <div class="flex justify-between items-center mb-3">
-                                <span class="text-sm font-medium text-gray-700">ลำดับความสำคัญ</span>
-                                <span class="text-sm font-bold px-3 py-1 rounded-full text-white" style="background: ${priorityColor};">
-                                    ${priorityLevel}
-                                </span>
-                            </div>
-                            <div class="w-full bg-gray-200 rounded-full h-3">
-                                <div class="h-3 rounded-full transition-all duration-300" 
-                                     style="width: ${Math.max(5, 100 - Math.min(teacher.queueScore, 100))}%; background: ${priorityColor};"></div>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-2 text-center">
-                                ${teacher.queueScore <= 15 ? '🎯 ได้รับงานต่อไปแน่นอน' : 
-                                  teacher.queueScore <= 30 ? '⭐ มีโอกาสได้รับงานสูง' : 
-                                  teacher.queueScore <= 50 ? '⚡ อาจได้รับงานบางครั้ง' : '💤 ควรพักผ่อนก่อน'}
-                            </p>
-                        </div>
-
-                        <div class="flex space-x-2">
-                            <button onclick="editTeacher(${teacher.teacherId})" class="btn-primary text-sm flex-1">
-                                <span class="mr-1">✏️</span>แก้ไข
-                            </button>
-                            <button onclick="adjustQueueScore(${teacher.teacherId})" class="btn-success text-sm flex-1">
-                                <span class="mr-1">⚖️</span>ปรับคะแนน
-                            </button>
-                        </div>
-                    </div>
+                        </td>
+                        <td class="text-sm text-gray-600">${teacher.position}</td>
+                        <td class="font-semibold text-[#5b2d38]">${teacher.queueScore}</td>
+                        <td class="text-center">${teacher.totalDuties}</td>
+                        <td class="text-center">${teacher.swapCount ?? 0}</td>
+                    </tr>
                 `;
             }).join('');
 
-            document.getElementById('teachers-cards').innerHTML = teachersHtml;
+            const activeTeacher = sortedTeachers.find(t => t.teacherId === selectedTeacherId) || sortedTeachers[0];
+            renderTeacherDetail(activeTeacher);
+        }
+
+        function showTeacherDetail(teacherId) {
+            selectedTeacherId = teacherId;
+            renderTeachersTable();
+        }
+
+        function renderTeacherDetail(teacher) {
+            const panel = document.getElementById('teacher-detail-panel');
+            if (!panel) {
+                return;
+            }
+
+            if (!teacher) {
+                panel.innerHTML = '<p class="text-sm text-gray-500">ยังไม่มีข้อมูลครูให้แสดง</p>';
+                return;
+            }
+
+            const relatedEvents = events
+                .filter(event => Array.isArray(event.assignedTeachers) && event.assignedTeachers.includes(teacher.teacherId))
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const highlightEvents = relatedEvents.slice(0, 3).map(event => {
+                const statusLabel = event.status === 'assigned' ? 'จัดคิวแล้ว' : event.status === 'completed' ? 'เสร็จสิ้น' : 'รอจัดคิว';
+                return `
+                    <li class="p-3 rounded-lg border border-gray-200 bg-gray-50">
+                        <p class="font-medium text-gray-800">${event.eventName}</p>
+                        <p class="text-xs text-gray-500">${formatDateThai(event.date)} • ${event.time}</p>
+                        <p class="text-xs text-gray-500">สถานที่: ${event.location}</p>
+                        <span class="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-full" style="background: rgba(137, 77, 91, 0.12); color: #5b2d38;">${statusLabel}</span>
+                    </li>
+                `;
+            }).join('');
+
+            panel.innerHTML = `
+                <div class="flex items-center gap-4">
+                    ${createTeacherAvatar(teacher, true)}
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-800">${teacher.name}</h3>
+                        <p class="text-sm text-gray-600">${teacher.position}</p>
+                        <div class="mt-2">
+                            <span class="queue-score">คะแนนคิว ${teacher.queueScore}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="teacher-detail-card mt-4">
+                    <div class="detail-row"><span>ลำดับคิวปัจจุบัน</span><span>${teacher.queueRank ?? '-'}</span></div>
+                    <div class="detail-row"><span>ออกงานทั้งหมด</span><span>${teacher.totalDuties} ครั้ง</span></div>
+                    <div class="detail-row"><span>แทนเพื่อนร่วมงาน</span><span>${teacher.swapCount ?? 0} ครั้ง</span></div>
+                    <div class="detail-row"><span>ออกงานล่าสุด</span><span>${teacher.lastEventDate ? formatDateThai(teacher.lastEventDate) : '-'}</span></div>
+                </div>
+                <div class="mt-4">
+                    <h4 class="font-semibold text-gray-800">งานที่เกี่ยวข้องล่าสุด</h4>
+                    ${relatedEvents.length > 0 ? `<ul class="mt-2 space-y-2">${highlightEvents}</ul>` : '<p class="text-sm text-gray-500 mt-2">ยังไม่มีประวัติงาน</p>'}
+                </div>
+                <div class="flex gap-3 mt-6">
+                    <button class="btn-primary flex-1" onclick="editTeacher(${teacher.teacherId})">
+                        <span class="mr-1">✏️</span>แก้ไขข้อมูล
+                    </button>
+                    <button class="btn-success flex-1" onclick="adjustQueueScore(${teacher.teacherId})">
+                        <span class="mr-1">⚖️</span>ปรับคะแนนคิว
+                    </button>
+                </div>
+            `;
+        }
+
+        function updateLocationInputs(lat, lng, description) {
+            const locationInput = document.getElementById('event-location');
+            const latInput = document.getElementById('event-location-lat');
+            const lngInput = document.getElementById('event-location-lng');
+
+            if (locationInput && description) {
+                locationInput.value = description;
+            }
+
+            if (latInput) {
+                latInput.value = lat != null ? lat : '';
+            }
+            if (lngInput) {
+                lngInput.value = lng != null ? lng : '';
+            }
+        }
+
+        function handleMapSelection(lat, lng, description) {
+            if (!locationMapInstance || typeof google === 'undefined') {
+                return;
+            }
+
+            const mapPosition = new google.maps.LatLng(lat, lng);
+            if (!locationMarker) {
+                locationMarker = new google.maps.Marker({ map: locationMapInstance, position: mapPosition });
+            }
+
+            locationMarker.setPosition(mapPosition);
+            locationMarker.setVisible(true);
+            locationMapInstance.setCenter(mapPosition);
+            locationMapInstance.setZoom(15);
+
+            const resolvedDescription = description && description.trim().length > 0
+                ? description
+                : `พิกัด (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
+
+            updateLocationInputs(lat, lng, resolvedDescription);
+        }
+
+        function initializeLocationMap() {
+            if (!mapsApiReady || typeof google === 'undefined') {
+                return;
+            }
+
+            const mapContainer = document.getElementById('location-map');
+            const locationInput = document.getElementById('event-location');
+
+            if (!mapContainer || !locationInput) {
+                return;
+            }
+
+            locationMapInstance = new google.maps.Map(mapContainer, {
+                center: DEFAULT_MAP_CENTER,
+                zoom: 6,
+                mapTypeControl: false
+            });
+
+            locationMarker = new google.maps.Marker({
+                map: locationMapInstance,
+                visible: false
+            });
+
+            locationAutocomplete = new google.maps.places.Autocomplete(locationInput, {
+                fields: ['geometry', 'formatted_address', 'name']
+            });
+
+            locationAutocomplete.addListener('place_changed', () => {
+                const place = locationAutocomplete.getPlace();
+                if (!place || !place.geometry) {
+                    return;
+                }
+
+                const lat = place.geometry.location.lat();
+                const lng = place.geometry.location.lng();
+                const description = place.formatted_address || place.name;
+                handleMapSelection(lat, lng, description);
+            });
+
+            locationMapInstance.addListener('click', event => {
+                if (!event || !event.latLng) {
+                    return;
+                }
+
+                handleMapSelection(event.latLng.lat(), event.latLng.lng(), document.getElementById('event-location').value);
+            });
+        }
+
+        function prepareLocationPicker(eventData) {
+            if (!mapsApiReady || typeof google === 'undefined') {
+                pendingLocationEvent = eventData || null;
+                return;
+            }
+
+            const mapContainer = document.getElementById('location-map');
+            if (!mapContainer) {
+                return;
+            }
+
+            if (!locationMapInstance) {
+                initializeLocationMap();
+            } else {
+                google.maps.event.trigger(locationMapInstance, 'resize');
+            }
+
+            if (eventData && eventData.locationLat != null && eventData.locationLng != null) {
+                const lat = parseFloat(eventData.locationLat);
+                const lng = parseFloat(eventData.locationLng);
+
+                if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+                    handleMapSelection(lat, lng, eventData.location);
+                }
+            } else {
+                if (locationMarker) {
+                    locationMarker.setVisible(false);
+                }
+                if (locationMapInstance) {
+                    locationMapInstance.setCenter(DEFAULT_MAP_CENTER);
+                    locationMapInstance.setZoom(6);
+                }
+            }
+        }
+
+        function resetLocationPicker() {
+            if (!mapsApiReady || typeof google === 'undefined') {
+                pendingLocationEvent = null;
+                return;
+            }
+
+            pendingLocationEvent = null;
+
+            if (locationMarker) {
+                locationMarker.setVisible(false);
+            }
+            if (locationMapInstance) {
+                locationMapInstance.setCenter(DEFAULT_MAP_CENTER);
+                locationMapInstance.setZoom(6);
+            }
         }
 
         // History rendering
@@ -1421,9 +1733,9 @@
 
             // Activity log
             const activityLogHtml = activityLog.length > 0 ? activityLog.map(log => {
-                const logClass = log.type === 'auto-assign' ? 'auto-assign' : 
+                const logClass = log.type === 'auto-assign' ? 'auto-assign' :
                                log.type === 'manual-edit' ? 'manual-edit' : 'substitution';
-                const date = new Date(log.timestamp).toLocaleString('th-TH');
+                const date = formatDateTimeThai(log.timestamp);
                 
                 return `
                     <div class="log-entry ${logClass}">
@@ -1445,9 +1757,14 @@
             const modal = document.getElementById('event-modal');
             const title = document.getElementById('event-modal-title');
             const form = document.getElementById('event-form');
+            const latInput = document.getElementById('event-location-lat');
+            const lngInput = document.getElementById('event-location-lng');
+
+            let targetEvent = null;
 
             if (eventId) {
                 const event = getEventById(eventId);
+                targetEvent = event;
                 title.textContent = 'แก้ไขงาน';
                 document.getElementById('event-name').value = event.eventName;
                 document.getElementById('event-details').value = event.details || '';
@@ -1456,17 +1773,24 @@
                 document.getElementById('event-end-time').value = event.endTime || '';
                 document.getElementById('event-location').value = event.location;
                 document.getElementById('event-quota').value = event.requiredQuota;
+                if (latInput) latInput.value = event.locationLat ?? '';
+                if (lngInput) lngInput.value = event.locationLng ?? '';
             } else {
                 title.textContent = 'เพิ่มงานใหม่';
                 form.reset();
+                if (latInput) latInput.value = '';
+                if (lngInput) lngInput.value = '';
             }
 
             modal.classList.add('show');
+
+            setTimeout(() => prepareLocationPicker(targetEvent), 120);
         }
 
         function closeEventModal() {
             document.getElementById('event-modal').classList.remove('show');
             currentEventId = null;
+            resetLocationPicker();
         }
 
         function openTeacherModal(teacherId = null) {
@@ -1627,6 +1951,7 @@
             selectedTeachers.forEach(teacher => {
                 teacher.totalDuties++;
                 teacher.queueScore += 15; // เพิ่มคะแนน 15 เมื่อออกงาน
+                teacher.lastEventDate = event.date;
             });
             
             // Add activity log
@@ -1749,6 +2074,8 @@
                 endTime: endTime,
                 time: `${startTime}-${endTime}`,
                 location: document.getElementById('event-location').value,
+                locationLat: parseFloat(document.getElementById('event-location-lat').value) || null,
+                locationLng: parseFloat(document.getElementById('event-location-lng').value) || null,
                 requiredQuota: parseInt(document.getElementById('event-quota').value)
             };
 
@@ -1756,11 +2083,11 @@
                 // Edit existing event
                 const event = getEventById(currentEventId);
                 Object.assign(event, eventData);
-                
+
                 addActivityLog(
                     'manual-edit',
                     `แก้ไขข้อมูลงาน "${eventData.eventName}"`,
-                    `วันที่: ${formatDateThai(eventData.date)} เวลา: ${eventData.time}`
+                    `วันที่: ${formatDateThai(eventData.date)} | เวลา: ${eventData.time} | สถานที่: ${eventData.location} | โควตาครู: ${eventData.requiredQuota} คน`
                 );
             } else {
                 // Add new event
@@ -1771,11 +2098,11 @@
                     status: 'pending'
                 };
                 events.push(newEvent);
-                
+
                 addActivityLog(
                     'manual-edit',
                     `เพิ่มงานใหม่ "${eventData.eventName}"`,
-                    `วันที่: ${formatDateThai(eventData.date)} เวลา: ${eventData.time}`
+                    `วันที่: ${formatDateThai(eventData.date)} | เวลา: ${eventData.time} | สถานที่: ${eventData.location} | โควตาครู: ${eventData.requiredQuota} คน`
                 );
             }
 
@@ -1849,6 +2176,7 @@
             substituteTeacher.totalDuties++;
             substituteTeacher.swapCount++;
             substituteTeacher.queueScore += 25; // เพิ่มคะแนน 25 เมื่อแทนเพื่อนร่วมงาน
+            substituteTeacher.lastEventDate = event.date;
 
             addActivityLog(
                 'substitution',
@@ -1920,6 +2248,16 @@
             }
         }
 
+        window.initMap = function() {
+            mapsApiReady = true;
+            initializeLocationMap();
+
+            if (pendingLocationEvent) {
+                prepareLocationPicker(pendingLocationEvent);
+                pendingLocationEvent = null;
+            }
+        };
+
         // Initialize application
         document.addEventListener('DOMContentLoaded', async function() {
             await initializeElementSdk();
@@ -1968,5 +2306,6 @@
       }
     }
   </script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAouBjZHcDpomyZTnb72oGOYckt8t3BYOs&libraries=places&callback=initMap" async defer></script>
  <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'995b9a46b40c072d',t:'MTc2MTY2Njc3MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
