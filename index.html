@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ระบบจัดการคิวงานพระราชพิธีครู</title>
-  <script src="/_sdk/element_sdk.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
         @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
@@ -493,6 +492,15 @@
      <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="closeSubstitutionModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-danger"> ยืนยันการสลับ </button>
      </div>
     </form>
+  </div>
+ </div>
+  <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
+   <div class="text-center">
+    <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
    </div>
   </div>
   <script>
@@ -503,13 +511,232 @@
         };
 
         // Data structures
+        let systemConfig = { ...defaultConfig };
         let teachers = [];
         let events = [];
         let activityLog = [];
         let currentEventId = null;
         let currentTeacherId = null;
+        let dataInitialized = false;
 
-        // Initialize data from localStorage or create sample data
+        function canUseAppsScript() {
+            return typeof google !== 'undefined' && google.script && google.script.run;
+        }
+
+        function toggleLoadingOverlay(show) {
+            const overlay = document.getElementById('loading-overlay');
+            if (!overlay) return;
+            if (show) {
+                overlay.classList.remove('hidden');
+            } else {
+                overlay.classList.add('hidden');
+            }
+        }
+
+        function createDefaultTeachers() {
+            return [
+                { teacherId: 1, name: 'พรรวินท์', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
+                { teacherId: 2, name: 'สอาดวรรณ', position: 'ครูชำนาญการพิเศษ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
+                { teacherId: 3, name: 'สุทัศษา', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
+                { teacherId: 4, name: 'กฤษณีนาท', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' },
+                { teacherId: 5, name: 'ขวัญนาค', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-01-08' },
+                { teacherId: 6, name: 'นัชนันท์', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-08-12' },
+                { teacherId: 7, name: 'นันทนา', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-01-08' },
+                { teacherId: 8, name: 'เพ็ญพรรณี', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-08-12' },
+                { teacherId: 9, name: 'วินัย', position: 'ครูชำนาญการพิเศษ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' },
+                { teacherId: 10, name: 'วิลาวรรณ', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-01-08' },
+                { teacherId: 11, name: 'อรวรรณ', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' },
+                { teacherId: 12, name: 'อังคณา', position: 'ครูชำนาญการ', totalDuties: 3, queueScore: 45, swapCount: 0, lastEventDate: '2024-08-12' },
+                { teacherId: 13, name: 'ภาณุวัฒน์', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' }
+            ];
+        }
+
+        function createDefaultEvents() {
+            return [
+                {
+                    eventId: 1,
+                    eventName: 'พิธีเสกน้ำพระพุทธมนต์ศักดิ์สิทธิ์',
+                    details: 'พิธีเสกน้ำพระพุทธมนต์เพื่อความเป็นสิริมงคล ร่วมกับชุมชนและผู้ปกครอง',
+                    date: '2024-07-07',
+                    startTime: '15:00',
+                    endTime: '17:00',
+                    time: '15:00-17:00',
+                    location: 'วัดพระบรมธาตุวรวิหาร ชัยนาท',
+                    requiredQuota: 3,
+                    assignedTeachers: [1, 2, 3],
+                    status: 'assigned'
+                },
+                {
+                    eventId: 2,
+                    eventName: 'จุดเทียนชัยถวายพระพร',
+                    date: '2024-08-12',
+                    time: '18:30-20:00',
+                    location: 'อาคารวิมลคุณากร',
+                    requiredQuota: 5,
+                    assignedTeachers: [5, 6, 7, 8, 12],
+                    status: 'assigned'
+                },
+                {
+                    eventId: 3,
+                    eventName: 'วันคล้ายวันประสูตรสมเด็จพระเจ้าลูกเธอ เจ้าฟ้าสิริวัณณวรี นารีรัตนราชกัญญา',
+                    date: '2025-01-08',
+                    time: '07:00-12:00',
+                    location: 'เขื่อนเรียงหิน',
+                    requiredQuota: 4,
+                    assignedTeachers: [5, 7, 10, 12],
+                    status: 'assigned'
+                },
+                {
+                    eventId: 4,
+                    eventName: 'วันคล้ายวันสถาปนากระทรวงศึกษาธิการ 133 ปี',
+                    date: '2025-04-01',
+                    time: '07:00-16:00',
+                    location: 'โรงเรียนหันคาพิทยาคม',
+                    requiredQuota: 5,
+                    assignedTeachers: [2, 4, 9, 11, 13],
+                    status: 'assigned'
+                },
+                {
+                    eventId: 5,
+                    eventName: 'วันคล้ายวันพระราชสมภพ ในหลวง',
+                    date: '2024-07-28',
+                    time: '07:00-12:00',
+                    location: 'เขื่อนเรียงหิน',
+                    requiredQuota: 5,
+                    assignedTeachers: [1, 3, 6, 9, 10],
+                    status: 'assigned'
+                },
+                {
+                    eventId: 6,
+                    eventName: 'ฟังสวดอภิธรรมสมเด็จพระราชินีนาถ',
+                    date: '2024-10-28',
+                    time: '16:45-18:00',
+                    location: 'วัดพระบรมธาตุวรวิหาร ชัยนาท',
+                    requiredQuota: 5,
+                    assignedTeachers: [],
+                    status: 'pending'
+                }
+            ];
+        }
+
+        function updateSystemLabels() {
+            const titleEl = document.getElementById('systemTitle');
+            const schoolEl = document.getElementById('schoolName');
+            if (titleEl) {
+                titleEl.textContent = systemConfig.system_title || defaultConfig.system_title;
+            }
+            if (schoolEl) {
+                schoolEl.textContent = systemConfig.school_name || defaultConfig.school_name;
+            }
+        }
+
+        function renderAllViews() {
+            renderDashboard();
+            renderEventsTable();
+            renderTeachersTable();
+            renderHistory();
+        }
+
+        function persistAllData() {
+            if (!canUseAppsScript()) {
+                return;
+            }
+
+            const payload = {
+                config: systemConfig,
+                teachers: teachers,
+                events: events,
+                activityLog: activityLog
+            };
+
+            google.script.run
+                .withFailureHandler(error => console.error('ไม่สามารถบันทึกข้อมูลไปยัง Firebase:', error))
+                .saveAllData(payload);
+        }
+
+        function saveData() {
+            if (!dataInitialized) {
+                return;
+            }
+
+            persistAllData();
+            renderAllViews();
+        }
+
+        function loadInitialData() {
+            if (canUseAppsScript()) {
+                toggleLoadingOverlay(true);
+                google.script.run
+                    .withSuccessHandler(data => {
+                        applyInitialData(data || {});
+                        dataInitialized = true;
+                        renderAllViews();
+                        toggleLoadingOverlay(false);
+                        showView('dashboard');
+                    })
+                    .withFailureHandler(error => {
+                        console.error('ไม่สามารถโหลดข้อมูลจาก Firebase:', error);
+                        applyInitialData({});
+                        dataInitialized = true;
+                        renderAllViews();
+                        toggleLoadingOverlay(false);
+                        showView('dashboard');
+                    })
+                    .fetchInitialData();
+            } else {
+                applyInitialData({});
+                dataInitialized = true;
+                renderAllViews();
+                showView('dashboard');
+            }
+        }
+
+        function applyInitialData(data) {
+            let shouldSeedDefaults = false;
+
+            if (Array.isArray(data.teachers) && data.teachers.length > 0) {
+                teachers = data.teachers;
+            } else {
+                teachers = createDefaultTeachers();
+                shouldSeedDefaults = true;
+            }
+
+            if (Array.isArray(data.events) && data.events.length > 0) {
+                events = data.events;
+            } else {
+                events = createDefaultEvents();
+                shouldSeedDefaults = true;
+            }
+
+            activityLog = Array.isArray(data.activityLog) ? data.activityLog : [];
+            systemConfig = { ...defaultConfig, ...(data.config || {}) };
+            updateSystemLabels();
+
+            if (window.elementSdk && window.elementSdk.config) {
+                window.elementSdk.config = { ...systemConfig };
+                if (window.elementSdk.element && typeof window.elementSdk.element.onConfigChange === 'function') {
+                    window.elementSdk.element.onConfigChange(window.elementSdk.config);
+                }
+            }
+
+            if (shouldSeedDefaults) {
+                persistAllData();
+            }
+        }
+
+        function addActivityLog(type, description, details = '') {
+            const log = {
+                id: Date.now(),
+                type: type,
+                description: description,
+                details: details,
+                timestamp: new Date().toISOString(),
+                admin: 'Admin'
+            };
+            activityLog.unshift(log);
+            saveData();
+        }
+
         // Teacher photos mapping
         const teacherPhotos = {
             'ภาณุวัฒน์': 'https://img5.pic.in.th/file/secure-sv1/5e6f1794bb827bebc2e65ada722df90a.jpg',
@@ -532,140 +759,19 @@
         }
 
         function createTeacherAvatar(teacher, large = false) {
-            const photo = getTeacherPhoto(teacher.name);
+            const photo = teacher ? getTeacherPhoto(teacher.name) : null;
             const avatarClass = large ? 'teacher-avatar-large' : 'teacher-avatar';
             if (photo) {
                 return `<div class="${avatarClass}">
                     <img src="${photo}" alt="${teacher.name}" onerror="this.style.display='none'; this.parentElement.innerHTML='${teacher.name.charAt(0)}';">
                 </div>`;
-            } else {
+            }
+
+            if (teacher && teacher.name) {
                 return `<div class="${avatarClass}">${teacher.name.charAt(0)}</div>`;
             }
-        }
 
-        function initializeData() {
-            const savedTeachers = localStorage.getItem('teachers');
-            const savedEvents = localStorage.getItem('events');
-            const savedLog = localStorage.getItem('activityLog');
-
-            if (savedTeachers) {
-                teachers = JSON.parse(savedTeachers);
-            } else {
-                // ข้อมูลครูตามตารางที่ให้มา - คะแนนคำนวณจากจำนวนงานที่ออก
-                teachers = [
-                    { teacherId: 1, name: 'พรรวินท์', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
-                    { teacherId: 2, name: 'สอาดวรรณ', position: 'ครูชำนาญการพิเศษ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
-                    { teacherId: 3, name: 'สุทัศษา', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
-                    { teacherId: 4, name: 'กฤษณีนาท', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' },
-                    { teacherId: 5, name: 'ขวัญนาค', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-01-08' },
-                    { teacherId: 6, name: 'นัชนันท์', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-08-12' },
-                    { teacherId: 7, name: 'นันทนา', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-01-08' },
-                    { teacherId: 8, name: 'เพ็ญพรรณี', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-08-12' },
-                    { teacherId: 9, name: 'วินัย', position: 'ครูชำนาญการพิเศษ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' },
-                    { teacherId: 10, name: 'วิลาวรรณ', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-01-08' },
-                    { teacherId: 11, name: 'อรวรรณ', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' },
-                    { teacherId: 12, name: 'อังคณา', position: 'ครูชำนาญการ', totalDuties: 3, queueScore: 45, swapCount: 0, lastEventDate: '2024-08-12' },
-                    { teacherId: 13, name: 'ภาณุวัฒน์', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' }
-                ];
-                saveData();
-            }
-
-            if (savedEvents) {
-                events = JSON.parse(savedEvents);
-            } else {
-                // ข้อมูลงานตามตารางที่ให้มา
-                events = [
-                    {
-                        eventId: 1,
-                        eventName: 'พิธีเสกน้ำพระพุทธมนต์ศักดิ์สิทธิ์',
-                        details: 'พิธีเสกน้ำพระพุทธมนต์เพื่อความเป็นสิริมงคล ร่วมกับชุมชนและผู้ปกครอง',
-                        date: '2024-07-07',
-                        startTime: '15:00',
-                        endTime: '17:00',
-                        time: '15:00-17:00',
-                        location: 'วัดพระบรมธาตุวรวิหาร ชัยนาท',
-                        requiredQuota: 3,
-                        assignedTeachers: [1, 2, 3],
-                        status: 'assigned'
-                    },
-                    {
-                        eventId: 2,
-                        eventName: 'จุดเทียนชัยถวายพระพร',
-                        date: '2024-08-12',
-                        time: '18:30-20:00',
-                        location: 'อาคารวิมลคุณากร',
-                        requiredQuota: 5,
-                        assignedTeachers: [5, 6, 7, 8, 12],
-                        status: 'assigned'
-                    },
-                    {
-                        eventId: 3,
-                        eventName: 'วันคล้ายวันประสูตรสมเด็จพระเจ้าลูกเธอ เจ้าฟ้าสิริวัณณวรี นารีรัตนราชกัญญา',
-                        date: '2025-01-08',
-                        time: '07:00-12:00',
-                        location: 'เขื่อนเรียงหิน',
-                        requiredQuota: 4,
-                        assignedTeachers: [5, 7, 10, 12],
-                        status: 'assigned'
-                    },
-                    {
-                        eventId: 4,
-                        eventName: 'วันคล้ายวันสถาปนากระทรวงศึกษาธิการ 133 ปี',
-                        date: '2025-04-01',
-                        time: '07:00-16:00',
-                        location: 'โรงเรียนหันคาพิทยาคม',
-                        requiredQuota: 5,
-                        assignedTeachers: [2, 4, 9, 11, 13],
-                        status: 'assigned'
-                    },
-                    {
-                        eventId: 5,
-                        eventName: 'วันคล้ายวันพระราชสมภพ ในหลวง',
-                        date: '2024-07-28',
-                        time: '07:00-12:00',
-                        location: 'เขื่อนเรียงหิน',
-                        requiredQuota: 5,
-                        assignedTeachers: [1, 3, 6, 9, 10],
-                        status: 'assigned'
-                    },
-                    {
-                        eventId: 6,
-                        eventName: 'ฟังสวดอภิธรรมสมเด็จพระราชินีนาถ',
-                        date: '2024-10-28',
-                        time: '16:45-18:00',
-                        location: 'วัดพระบรมธาตุวรวิหาร ชัยนาท',
-                        requiredQuota: 5,
-                        assignedTeachers: [],
-                        status: 'pending'
-                    }
-                ];
-                saveData();
-            }
-
-            if (savedLog) {
-                activityLog = JSON.parse(savedLog);
-            } else {
-                activityLog = [];
-            }
-        }
-
-        function saveData() {
-            localStorage.setItem('teachers', JSON.stringify(teachers));
-            localStorage.setItem('events', JSON.stringify(events));
-            localStorage.setItem('activityLog', JSON.stringify(activityLog));
-        }
-
-        function addActivityLog(type, description, details = '') {
-            const log = {
-                id: Date.now(),
-                type: type, // 'auto-assign', 'manual-edit', 'substitution'
-                description: description,
-                details: details,
-                timestamp: new Date().toISOString(),
-                admin: 'Admin' // In real system, this would be the logged-in admin
-            };
-            activityLog.unshift(log);
-            saveData();
+            return `<div class="${avatarClass}">?</div>`;
         }
 
         function formatDateThai(dateStr) {
@@ -1527,16 +1633,15 @@
         const elementSdk = {
             init: async function(element) {
                 this.element = element;
-                this.config = { ...element.defaultConfig };
-                
-                // Apply initial config
+                this.config = { ...systemConfig };
+
                 await element.onConfigChange(this.config);
-                
+
                 return { isOk: true };
             },
-            
+
             setConfig: async function(newConfig) {
-                Object.assign(this.config, newConfig);
+                this.config = { ...this.config, ...newConfig };
                 await this.element.onConfigChange(this.config);
             }
         };
@@ -1550,10 +1655,13 @@
                 await window.elementSdk.init({
                     defaultConfig: defaultConfig,
                     onConfigChange: async function(config) {
-                        document.getElementById('systemTitle').textContent = config.system_title || defaultConfig.system_title;
-                        document.getElementById('schoolName').textContent = config.school_name || defaultConfig.school_name;
+                        systemConfig = { ...defaultConfig, ...config };
+                        updateSystemLabels();
+                        if (dataInitialized) {
+                            saveData();
+                        }
                     },
-                    mapToCapabilities: function(config) {
+                    mapToCapabilities: function() {
                         return {
                             recolorables: [],
                             borderables: [],
@@ -1562,9 +1670,10 @@
                         };
                     },
                     mapToEditPanelValues: function(config) {
+                        const mergedConfig = { ...defaultConfig, ...config };
                         return new Map([
-                            ["system_title", config.system_title || defaultConfig.system_title],
-                            ["school_name", config.school_name || defaultConfig.school_name]
+                            ["system_title", mergedConfig.system_title],
+                            ["school_name", mergedConfig.school_name]
                         ]);
                     }
                 });
@@ -1573,9 +1682,8 @@
 
         // Initialize application
         document.addEventListener('DOMContentLoaded', function() {
-            initializeData();
             initializeElementSdk();
-            showView('dashboard');
+            loadInitialData();
         });
     </script>
  <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'995b9a46b40c072d',t:'MTc2MTY2Njc3MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
