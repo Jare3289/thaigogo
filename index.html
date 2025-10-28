@@ -1613,9 +1613,14 @@
             const modal = document.getElementById('event-modal');
             const title = document.getElementById('event-modal-title');
             const form = document.getElementById('event-form');
+            const latInput = document.getElementById('event-location-lat');
+            const lngInput = document.getElementById('event-location-lng');
+
+            let targetEvent = null;
 
             if (eventId) {
                 const event = getEventById(eventId);
+                targetEvent = event;
                 title.textContent = 'แก้ไขงาน';
                 document.getElementById('event-name').value = event.eventName;
                 document.getElementById('event-details').value = event.details || '';
@@ -1624,17 +1629,24 @@
                 document.getElementById('event-end-time').value = event.endTime || '';
                 document.getElementById('event-location').value = event.location;
                 document.getElementById('event-quota').value = event.requiredQuota;
+                if (latInput) latInput.value = event.locationLat ?? '';
+                if (lngInput) lngInput.value = event.locationLng ?? '';
             } else {
                 title.textContent = 'เพิ่มงานใหม่';
                 form.reset();
+                if (latInput) latInput.value = '';
+                if (lngInput) lngInput.value = '';
             }
 
             modal.classList.add('show');
+
+            setTimeout(() => prepareLocationPicker(targetEvent), 120);
         }
 
         function closeEventModal() {
             document.getElementById('event-modal').classList.remove('show');
             currentEventId = null;
+            resetLocationPicker();
         }
 
         function openTeacherModal(teacherId = null) {
@@ -1918,6 +1930,8 @@
                 endTime: endTime,
                 time: `${startTime}-${endTime}`,
                 location: document.getElementById('event-location').value,
+                locationLat: parseFloat(document.getElementById('event-location-lat').value) || null,
+                locationLng: parseFloat(document.getElementById('event-location-lng').value) || null,
                 requiredQuota: parseInt(document.getElementById('event-quota').value)
             };
 
@@ -2089,6 +2103,16 @@
                 });
             }
         }
+
+        window.initMap = function() {
+            mapsApiReady = true;
+            initializeLocationMap();
+
+            if (pendingLocationEvent) {
+                prepareLocationPicker(pendingLocationEvent);
+                pendingLocationEvent = null;
+            }
+        };
 
         // Initialize application
         document.addEventListener('DOMContentLoaded', async function() {
