@@ -1,4 +1,4 @@
-const FIREBASE_BASE_URL = 'https://thaievent-7784d-default-rtdb.firebaseio.com';
+const FIREBASE_BASE_URL = 'https://thaievent-7784d-default-rtdb.asia-southeast1.firebasedatabase.app';
 
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('index')
