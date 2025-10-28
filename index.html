@@ -505,6 +505,43 @@
    </div>
   </div>
   <script>
+        // Firebase initialization bridge (shared with module loader)
+        window.firebaseAppConfig = window.firebaseAppConfig || {
+            apiKey: "AIzaSyAouBjZHcDpomyZTnb72oGOYckt8t3BYOs",
+            authDomain: "thaievent-7784d.firebaseapp.com",
+            databaseURL: "https://thaievent-7784d-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "thaievent-7784d",
+            storageBucket: "thaievent-7784d.firebasestorage.app",
+            messagingSenderId: "659666756591",
+            appId: "1:659666756591:web:f1cc02a782654c74b14c1a",
+            measurementId: "G-RSQB7Q6G73"
+        };
+
+        window.firebaseReadyPromise = window.firebaseReadyPromise || new Promise((resolve, reject) => {
+            window.__resolveFirebaseReady = resolve;
+            window.__rejectFirebaseReady = reject;
+        });
+
+        window.notifyFirebaseReady = function(app, database, helpers) {
+            window.firebaseApp = app;
+            window.firebaseDatabase = database;
+            if (helpers) {
+                window.firebaseDbApi = helpers;
+            }
+            if (typeof window.__resolveFirebaseReady === 'function') {
+                window.__resolveFirebaseReady({ app, database });
+                window.__resolveFirebaseReady = null;
+            }
+        };
+
+        window.notifyFirebaseInitError = function(error) {
+            if (typeof window.__rejectFirebaseReady === 'function') {
+                window.__rejectFirebaseReady(error);
+                window.__rejectFirebaseReady = null;
+            }
+            console.error('Firebase initialization failed:', error);
+        };
+
         // Default configuration
         const defaultConfig = {
             system_title: "ระบบจัดการออกงานครู",
@@ -513,11 +550,6 @@
 
         const PRIMARY_COLOR = '#894D5B';
         const SECONDARY_COLOR = '#E1B1C1';
-        const FIREBASE_WEB_CONFIG = {
-            databaseURL: 'https://thaievent-7784d-default-rtdb.asia-southeast1.firebasedatabase.app',
-            auth: 'oDSyzXHcWvnjTGsvrDPrew6IlreT9KlBLqDpSDij',
-            apiKey: 'AIzaSyAouBjZHcDpomyZTnb72oGOYckt8t3BYOs'
-        };
 
         // Data structures
         let systemConfig = { ...defaultConfig };
@@ -527,47 +559,53 @@
         let currentEventId = null;
         let currentTeacherId = null;
         let dataInitialized = false;
-
-        function canUseAppsScript() {
-            return typeof google !== 'undefined' && google.script && google.script.run;
-        }
+        let firebaseDataLoaded = false;
 
         function canUseDirectFirebase() {
-            return typeof fetch === 'function' && FIREBASE_WEB_CONFIG.databaseURL;
-        }
-
-        function buildFirebaseWebUrl(path) {
-            const normalizedPath = (path || '').replace(/^\/+/, '').replace(/\/+$/, '');
-            let url = `${FIREBASE_WEB_CONFIG.databaseURL.replace(/\/+$/, '')}/${normalizedPath}.json`;
-            if (FIREBASE_WEB_CONFIG.auth) {
-                const separator = url.includes('?') ? '&' : '?';
-                url += `${separator}auth=${encodeURIComponent(FIREBASE_WEB_CONFIG.auth)}`;
-            }
-            return url;
+            return !!(window.firebaseDatabase && window.firebaseDbApi);
         }
 
         async function firebaseFetch(path, options = {}) {
-            const url = buildFirebaseWebUrl(path);
-            const fetchOptions = {
-                method: options.method || 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(options.headers || {})
+            if (!canUseDirectFirebase()) {
+                throw new Error('Firebase database is not ready');
+            }
+
+            const helpers = window.firebaseDbApi;
+            const database = window.firebaseDatabase;
+            const method = (options.method || 'GET').toUpperCase();
+            const normalizedPath = (path || '').replace(/^\/+/, '');
+            const targetRef = normalizedPath
+                ? helpers.ref(database, normalizedPath)
+                : helpers.ref(database);
+
+            if (method === 'GET') {
+                const snapshot = await helpers.get(targetRef);
+                return snapshot.exists() ? snapshot.val() : null;
+            }
+
+            let payload = options.body;
+            if (typeof payload === 'string') {
+                try {
+                    payload = JSON.parse(payload);
+                } catch (error) {
+                    console.warn('Unable to parse Firebase payload string, sending raw value.');
                 }
-            };
-
-            if (options.body !== undefined) {
-                fetchOptions.body = options.body;
             }
 
-            const response = await fetch(url, fetchOptions);
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Firebase request failed (${response.status}): ${errorText}`);
+            if (method === 'PUT') {
+                await helpers.set(targetRef, payload);
+                return payload;
             }
 
-            const text = await response.text();
-            return text ? JSON.parse(text) : null;
+            if (method === 'PATCH') {
+                if (payload && typeof payload === 'object') {
+                    await helpers.update(targetRef, payload);
+                    return payload;
+                }
+                throw new Error('PATCH requests require a JSON object payload');
+            }
+
+            throw new Error(`Unsupported Firebase method: ${method}`);
         }
 
         function normalizeFirebaseList(value) {
@@ -748,21 +786,13 @@
 
         function persistAllData() {
             const payload = buildPersistPayload();
-
-            if (canUseAppsScript()) {
-                google.script.run
-                    .withFailureHandler(error => console.error('ไม่สามารถบันทึกข้อมูลไปยัง Firebase:', error))
-                    .saveAllData(payload);
-                return null;
-            }
-
             if (canUseDirectFirebase()) {
                 return persistAllDataDirect(payload).catch(error => {
                     console.error('ไม่สามารถบันทึกข้อมูลไปยัง Firebase โดยตรง:', error);
                 });
             }
 
-            return null;
+            return Promise.resolve();
         }
 
         function saveData() {
@@ -793,50 +823,52 @@
             };
         }
 
-        function loadInitialData() {
-            if (canUseAppsScript()) {
-                toggleLoadingOverlay(true);
-                google.script.run
-                    .withSuccessHandler(data => {
-                        applyInitialData(data || {});
-                        dataInitialized = true;
-                        renderAllViews();
-                        toggleLoadingOverlay(false);
-                        showView('dashboard');
-                    })
-                    .withFailureHandler(error => {
-                        console.error('ไม่สามารถโหลดข้อมูลจาก Firebase:', error);
-                        applyInitialData({});
-                        dataInitialized = true;
-                        renderAllViews();
-                        toggleLoadingOverlay(false);
-                        showView('dashboard');
-                    })
-                    .fetchInitialData();
-            } else if (canUseDirectFirebase()) {
-                toggleLoadingOverlay(true);
-                fetchInitialDataDirect()
-                    .then(data => {
-                        applyInitialData(data || {});
-                        dataInitialized = true;
-                        renderAllViews();
-                        showView('dashboard');
-                    })
-                    .catch(error => {
-                        console.error('ไม่สามารถโหลดข้อมูลจาก Firebase โดยตรง:', error);
-                        applyInitialData({});
-                        dataInitialized = true;
-                        renderAllViews();
-                        showView('dashboard');
-                    })
-                    .finally(() => {
-                        toggleLoadingOverlay(false);
-                    });
+        async function loadInitialData() {
+            toggleLoadingOverlay(true);
+
+            if (window.firebaseReadyPromise) {
+                try {
+                    await Promise.race([
+                        window.firebaseReadyPromise,
+                        new Promise(resolve => setTimeout(resolve, 5000))
+                    ]);
+                } catch (error) {
+                    console.error('Firebase initialization error:', error);
+                }
+            }
+
+            if (canUseDirectFirebase()) {
+                try {
+                    const data = await fetchInitialDataDirect();
+                    firebaseDataLoaded = true;
+                    applyInitialData(data || {});
+                } catch (error) {
+                    console.error('ไม่สามารถโหลดข้อมูลจาก Firebase โดยตรง:', error);
+                    applyInitialData({});
+                }
             } else {
                 applyInitialData({});
-                dataInitialized = true;
-                renderAllViews();
-                showView('dashboard');
+            }
+
+            dataInitialized = true;
+            renderAllViews();
+            showView('dashboard');
+            toggleLoadingOverlay(false);
+
+            if (!firebaseDataLoaded && window.firebaseReadyPromise) {
+                window.firebaseReadyPromise
+                    .then(() => {
+                        if (!firebaseDataLoaded && canUseDirectFirebase()) {
+                            fetchInitialDataDirect()
+                                .then(data => {
+                                    firebaseDataLoaded = true;
+                                    applyInitialData(data || {});
+                                    renderAllViews();
+                                })
+                                .catch(error => console.error('ไม่สามารถซิงค์ข้อมูลจาก Firebase หลังการเริ่มต้น:', error));
+                        }
+                    })
+                    .catch(() => {});
             }
         }
 
@@ -1836,10 +1868,52 @@
         }
 
         // Initialize application
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeElementSdk();
-            loadInitialData();
+        document.addEventListener('DOMContentLoaded', async function() {
+            await initializeElementSdk();
+            await loadInitialData();
         });
     </script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-analytics.js";
+    import { getDatabase, ref, get, set, update } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
+
+    const firebaseConfig = window.firebaseAppConfig || {
+      apiKey: "AIzaSyAouBjZHcDpomyZTnb72oGOYckt8t3BYOs",
+      authDomain: "thaievent-7784d.firebaseapp.com",
+      databaseURL: "https://thaievent-7784d-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "thaievent-7784d",
+      storageBucket: "thaievent-7784d.firebasestorage.app",
+      messagingSenderId: "659666756591",
+      appId: "1:659666756591:web:f1cc02a782654c74b14c1a",
+      measurementId: "G-RSQB7Q6G73"
+    };
+
+    try {
+      const app = initializeApp(firebaseConfig);
+      try {
+        getAnalytics(app);
+      } catch (analyticsError) {
+        console.info('Firebase Analytics is unavailable in this environment.', analyticsError);
+      }
+
+      const database = getDatabase(app);
+      const helpers = { ref, get, set, update };
+      window.firebaseDbApi = helpers;
+
+      if (typeof window.notifyFirebaseReady === 'function') {
+        window.notifyFirebaseReady(app, database, helpers);
+      } else {
+        window.firebaseApp = app;
+        window.firebaseDatabase = database;
+      }
+    } catch (error) {
+      if (typeof window.notifyFirebaseInitError === 'function') {
+        window.notifyFirebaseInitError(error);
+      } else {
+        console.error('Firebase initialization error:', error);
+      }
+    }
+  </script>
  <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'995b9a46b40c072d',t:'MTc2MTY2Njc3MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
