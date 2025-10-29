@@ -727,7 +727,12 @@
         let firebaseDataLoaded = false;
 
         function canUseDirectFirebase() {
-            return !!(window.firebaseDatabase && window.firebaseDbApi);
+            return !!(
+                window.firebaseDatabase &&
+                window.firebaseDbApi &&
+                typeof window.firebaseDbApi.get === 'function' &&
+                typeof window.firebaseDbApi.put === 'function'
+            );
         }
 
         async function firebaseFetch(path, options = {}) {
@@ -736,16 +741,10 @@
             }
 
             const helpers = window.firebaseDbApi;
-            const database = window.firebaseDatabase;
             const method = (options.method || 'GET').toUpperCase();
-            const normalizedPath = (path || '').replace(/^\/+/, '');
-            const targetRef = normalizedPath
-                ? helpers.ref(database, normalizedPath)
-                : helpers.ref(database);
 
             if (method === 'GET') {
-                const snapshot = await helpers.get(targetRef);
-                return snapshot.exists() ? snapshot.val() : null;
+                return helpers.get(path);
             }
 
             let payload = options.body;
@@ -758,14 +757,12 @@
             }
 
             if (method === 'PUT') {
-                await helpers.set(targetRef, payload);
-                return payload;
+                return helpers.put(path, payload);
             }
 
             if (method === 'PATCH') {
                 if (payload && typeof payload === 'object') {
-                    await helpers.update(targetRef, payload);
-                    return payload;
+                    return helpers.patch(path, payload);
                 }
                 throw new Error('PATCH requests require a JSON object payload');
             }
@@ -805,17 +802,17 @@
         function createDefaultTeachers() {
             return [
                 { teacherId: 1, name: 'พรรวินท์', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
-                { teacherId: 2, name: 'สอาดวรรณ', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
-                { teacherId: 3, name: 'สุทัศษา', position: 'ครูชำนาญการพิเศษ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
-                { teacherId: 4, name: 'กฤษณีนาท', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' },
+                { teacherId: 2, name: 'สอาดวรรณ', position: 'ครูชำนาญการพิเศษ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
+                { teacherId: 3, name: 'สุทัศษา', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
+                { teacherId: 4, name: 'กฤษณีนาท', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' },
                 { teacherId: 5, name: 'ขวัญนาค', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-01-08' },
                 { teacherId: 6, name: 'นัชนันท์', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-08-12' },
                 { teacherId: 7, name: 'นันทนา', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-01-08' },
-                { teacherId: 8, name: 'เพ็ญพรรณี', position: 'ครูชำนาญการพิเศษ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-08-12' },
-                { teacherId: 9, name: 'วินัย', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' },
-                { teacherId: 10, name: 'วิลาวรรณ', position: 'ครูชำนาญการพิเศษ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-01-08' },
+                { teacherId: 8, name: 'เพ็ญพรรณี', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-08-12' },
+                { teacherId: 9, name: 'วินัย', position: 'ครูชำนาญการพิเศษ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' },
+                { teacherId: 10, name: 'วิลาวรรณ', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-01-08' },
                 { teacherId: 11, name: 'อรวรรณ', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' },
-                { teacherId: 12, name: 'อังคณา', position: 'ครูชำนาญการพิเศษ', totalDuties: 3, queueScore: 45, swapCount: 0, lastEventDate: '2024-08-12' },
+                { teacherId: 12, name: 'อังคณา', position: 'ครูชำนาญการ', totalDuties: 3, queueScore: 45, swapCount: 0, lastEventDate: '2024-08-12' },
                 { teacherId: 13, name: 'ภาณุวัฒน์', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' }
             ];
         }
@@ -2120,47 +2117,79 @@
             await loadInitialData();
         });
     </script>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-analytics.js";
-    import { getDatabase, ref, get, set, update } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-analytics-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-database-compat.js"></script>
+  <script>
+    (function() {
+      const firebaseConfig = window.firebaseAppConfig || {
+        apiKey: "AIzaSyAouBjZHcDpomyZTnb72oGOYckt8t3BYOs",
+        authDomain: "thaievent-7784d.firebaseapp.com",
+        databaseURL: "https://thaievent-7784d-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "thaievent-7784d",
+        storageBucket: "thaievent-7784d.firebasestorage.app",
+        messagingSenderId: "659666756591",
+        appId: "1:659666756591:web:f1cc02a782654c74b14c1a",
+        measurementId: "G-RSQB7Q6G73"
+      };
 
-    const firebaseConfig = window.firebaseAppConfig || {
-      apiKey: "AIzaSyAouBjZHcDpomyZTnb72oGOYckt8t3BYOs",
-      authDomain: "thaievent-7784d.firebaseapp.com",
-      databaseURL: "https://thaievent-7784d-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "thaievent-7784d",
-      storageBucket: "thaievent-7784d.firebasestorage.app",
-      messagingSenderId: "659666756591",
-      appId: "1:659666756591:web:f1cc02a782654c74b14c1a",
-      measurementId: "G-RSQB7Q6G73"
-    };
-
-    try {
-      const app = initializeApp(firebaseConfig);
       try {
-        getAnalytics(app);
-      } catch (analyticsError) {
-        console.info('Firebase Analytics is unavailable in this environment.', analyticsError);
-      }
+        if (!firebase.apps.length) {
+          firebase.initializeApp(firebaseConfig);
+        }
 
-      const database = getDatabase(app);
-      const helpers = { ref, get, set, update };
-      window.firebaseDbApi = helpers;
+        try {
+          if (typeof firebase.analytics === 'function') {
+            firebase.analytics();
+          }
+        } catch (analyticsError) {
+          console.info('Firebase Analytics is unavailable in this environment.', analyticsError);
+        }
 
-      if (typeof window.notifyFirebaseReady === 'function') {
-        window.notifyFirebaseReady(app, database, helpers);
-      } else {
-        window.firebaseApp = app;
+        const database = firebase.database();
+        const helpers = {
+          get: async (path) => {
+            const normalizedPath = (path || '').replace(/^\/+/, '');
+            const ref = normalizedPath ? database.ref(normalizedPath) : database.ref();
+            if (typeof ref.get === 'function') {
+              const snapshot = await ref.get();
+              return snapshot.exists() ? snapshot.val() : null;
+            }
+            const snapshot = await ref.once('value');
+            return snapshot.exists() ? snapshot.val() : null;
+          },
+          put: async (path, value) => {
+            const normalizedPath = (path || '').replace(/^\/+/, '');
+            const ref = normalizedPath ? database.ref(normalizedPath) : database.ref();
+            await ref.set(value);
+            return value;
+          },
+          patch: async (path, value) => {
+            if (!value || typeof value !== 'object') {
+              throw new Error('PATCH requests require a JSON object payload');
+            }
+            const normalizedPath = (path || '').replace(/^\/+/, '');
+            const ref = normalizedPath ? database.ref(normalizedPath) : database.ref();
+            await ref.update(value);
+            return value;
+          }
+        };
+
+        window.firebaseApp = firebase.app();
         window.firebaseDatabase = database;
+        window.firebaseDbApi = helpers;
+
+        if (typeof window.notifyFirebaseReady === 'function') {
+          window.notifyFirebaseReady(window.firebaseApp, database, helpers);
+        }
+      } catch (error) {
+        if (typeof window.notifyFirebaseInitError === 'function') {
+          window.notifyFirebaseInitError(error);
+        } else {
+          console.error('Firebase initialization error:', error);
+        }
       }
-    } catch (error) {
-      if (typeof window.notifyFirebaseInitError === 'function') {
-        window.notifyFirebaseInitError(error);
-      } else {
-        console.error('Firebase initialization error:', error);
-      }
-    }
+    })();
   </script>
  <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'995b9a46b40c072d',t:'MTc2MTY2Njc3MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
