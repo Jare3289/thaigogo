@@ -609,6 +609,10 @@
       <div class="form-group md:w-1/2"><label class="form-label">จำนวนครูที่ต้องการ</label> <input type="number" id="event-quota" class="form-input" min="1" required>
       </div>
      </div>
+     <div id="event-assignment-summary" class="mt-4 hidden">
+      <h4 class="text-sm font-semibold text-gray-700 mb-2">ข้อมูลการจัดคิวปัจจุบัน</h4>
+      <div id="event-assignment-list" class="space-y-2"></div>
+     </div>
      <input type="hidden" id="event-location-lat" value="">
      <input type="hidden" id="event-location-lng" value="">
      <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="closeEventModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
@@ -728,6 +732,66 @@
         let dataInitialized = false;
         let firebaseDataLoaded = false;
 
+        function normalizeTeacherId(value) {
+            if (value === null || value === undefined) {
+                return null;
+            }
+
+            if (typeof value === 'number') {
+                return value;
+            }
+
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : value;
+        }
+
+        function createAssignmentSlotsFromIds(ids = []) {
+            return (Array.isArray(ids) ? ids : [])
+                .filter(id => id !== null && id !== undefined)
+                .map(id => {
+                    const normalizedId = normalizeTeacherId(id);
+                    return {
+                        originalTeacherId: normalizedId,
+                        currentTeacherId: normalizedId,
+                        substituteTeacherId: null
+                    };
+                });
+        }
+
+        function ensureEventAssignments(event) {
+            if (!event || typeof event !== 'object') {
+                return event;
+            }
+
+            if (!Array.isArray(event.assignmentSlots) || event.assignmentSlots.length === 0) {
+                event.assignmentSlots = createAssignmentSlotsFromIds(event.assignedTeachers);
+            } else {
+                event.assignmentSlots = event.assignmentSlots.map(slot => {
+                    const originalId = normalizeTeacherId(slot.originalTeacherId ?? slot.teacherId ?? slot.currentTeacherId ?? null);
+                    const currentId = normalizeTeacherId(slot.currentTeacherId ?? slot.substituteTeacherId ?? originalId);
+                    return {
+                        originalTeacherId: originalId,
+                        currentTeacherId: currentId,
+                        substituteTeacherId: currentId && originalId && currentId !== originalId ? currentId : null
+                    };
+                });
+            }
+
+            event.assignedTeachers = event.assignmentSlots
+                .map(slot => slot.currentTeacherId)
+                .filter(id => id !== null && id !== undefined);
+
+            return event;
+        }
+
+        function getEventAssignmentSlots(event) {
+            if (!event) {
+                return [];
+            }
+            ensureEventAssignments(event);
+            return event.assignmentSlots;
+        }
+
         function canUseDirectFirebase() {
             return !!(
                 window.firebaseDbApi &&
@@ -819,7 +883,7 @@
         }
 
         function createDefaultEvents() {
-            return [
+            const defaultEvents = [
                 {
                     eventId: 1,
                     eventName: 'พิธีเสกน้ำพระพุทธมนต์ศักดิ์สิทธิ์',
@@ -895,6 +959,9 @@
                     status: 'pending'
                 }
             ];
+
+            defaultEvents.forEach(event => ensureEventAssignments(event));
+            return defaultEvents;
         }
 
         function updateSystemLabels() {
@@ -1064,6 +1131,11 @@
                 events = createDefaultEvents();
                 shouldSeedDefaults = true;
             }
+
+            events = (Array.isArray(events) ? events : []).map(event => {
+                ensureEventAssignments(event);
+                return event;
+            });
 
             activityLog = Array.isArray(data.activityLog) ? data.activityLog : [];
             systemConfig = { ...defaultConfig, ...(data.config || {}) };
@@ -1362,13 +1434,17 @@
         function renderEventsTable() {
             const sortedEvents = [...events].sort((a, b) => new Date(b.date) - new Date(a.date));
             const eventsHtml = sortedEvents.map(event => {
-                const statusClass = event.status === 'assigned' ? 'status-assigned' : 
+                const statusClass = event.status === 'assigned' ? 'status-assigned' :
                                   event.status === 'completed' ? 'status-completed' : 'status-pending';
-                const statusText = event.status === 'assigned' ? 'จัดคิวแล้ว' : 
+                const statusText = event.status === 'assigned' ? 'จัดคิวแล้ว' :
                                  event.status === 'completed' ? 'เสร็จสิ้น' : 'รอจัดคิว';
 
-                const statusIcon = event.status === 'assigned' ? '✅' : 
+                const statusIcon = event.status === 'assigned' ? '✅' :
                                  event.status === 'completed' ? '🎉' : '⏳';
+
+                const assignmentSlots = getEventAssignmentSlots(event);
+                const currentAssignments = assignmentSlots.filter(slot => slot.currentTeacherId !== null && slot.currentTeacherId !== undefined);
+                const assignedCount = currentAssignments.length;
 
                 return `
                     <div class="card p-6 hover:shadow-lg transition-all duration-300">
@@ -1391,22 +1467,29 @@
                                 <span class="status-badge ${statusClass} flex items-center">
                                     <span class="mr-1">${statusIcon}</span>${statusText}
                                 </span>
-                                <p class="text-sm text-gray-500 mt-2">${event.assignedTeachers.length}/${event.requiredQuota} คน</p>
+                                <p class="text-sm text-gray-500 mt-2">${assignedCount}/${event.requiredQuota} คน</p>
                             </div>
                         </div>
 
-                        ${event.assignedTeachers.length > 0 ? `
+                        ${currentAssignments.length > 0 ? `
                             <div class="mb-4">
                                 <p class="text-sm font-medium text-gray-700 mb-3">ครูที่ได้รับมอบหมาย:</p>
                                 <div class="flex flex-wrap gap-2">
-                                    ${event.assignedTeachers.map(id => {
-                                        const teacher = getTeacherById(id);
+                                    ${currentAssignments.map(slot => {
+                                        const currentTeacher = getTeacherById(slot.currentTeacherId);
+                                        const originalTeacher = slot.originalTeacherId ? getTeacherById(slot.originalTeacherId) : null;
+                                        const isSubstituted = slot.originalTeacherId && slot.currentTeacherId && slot.originalTeacherId !== slot.currentTeacherId;
+                                        const currentName = currentTeacher ? currentTeacher.name : 'ไม่พบข้อมูล';
+                                        const originalName = originalTeacher ? originalTeacher.name : 'ไม่ทราบ';
                                         return `
-                                            <div class="flex items-center bg-gray-50 p-2 rounded-lg">
-                                                ${createTeacherAvatar(teacher)}
+                                            <div class="flex items-center bg-gray-50 p-2 rounded-lg border ${isSubstituted ? 'border-[#E1B1C1]' : 'border-transparent'}">
+                                                ${createTeacherAvatar(currentTeacher)}
                                                 <div class="ml-2">
-                                                    <p class="font-medium text-gray-800 text-sm">${teacher.name}</p>
-                                                    <div class="queue-score text-xs">${teacher.queueScore}</div>
+                                                    <p class="font-medium text-gray-800 text-sm">${currentName}</p>
+                                                    ${isSubstituted
+                                                        ? `<p class="text-xs text-[#894D5B] font-medium">แทนคิวของ ${originalName}</p>`
+                                                        : `<p class="text-xs text-gray-500">คิวเดิม</p>`}
+                                                    <div class="queue-score text-xs mt-1">คะแนนคิว ${currentTeacher && typeof currentTeacher.queueScore === 'number' ? currentTeacher.queueScore : '-'}</div>
                                                 </div>
                                             </div>
                                         `;
@@ -1606,6 +1689,64 @@
         }
 
         // Modal functions
+        function renderEventAssignmentSummary(event) {
+            const summary = document.getElementById('event-assignment-summary');
+            const list = document.getElementById('event-assignment-list');
+
+            if (!summary || !list) {
+                return;
+            }
+
+            if (!event) {
+                summary.classList.add('hidden');
+                list.innerHTML = '';
+                return;
+            }
+
+            const slots = getEventAssignmentSlots(event);
+            summary.classList.remove('hidden');
+
+            if (!slots.length) {
+                list.innerHTML = '<p class="text-sm text-gray-500">ยังไม่มีข้อมูลการจัดคิวสำหรับงานนี้</p>';
+                return;
+            }
+
+            list.innerHTML = slots.map((slot, index) => {
+                const originalTeacher = slot.originalTeacherId ? getTeacherById(slot.originalTeacherId) : null;
+                const currentTeacher = slot.currentTeacherId ? getTeacherById(slot.currentTeacherId) : null;
+                const isSubstituted = slot.originalTeacherId && slot.currentTeacherId && slot.originalTeacherId !== slot.currentTeacherId;
+
+                const originalName = originalTeacher ? originalTeacher.name : 'ไม่ระบุ';
+                const currentName = currentTeacher ? currentTeacher.name : 'ไม่พบข้อมูล';
+                const currentScore = currentTeacher && typeof currentTeacher.queueScore === 'number' ? currentTeacher.queueScore : '-';
+
+                return `
+                    <div class="p-3 rounded-lg border ${isSubstituted ? 'border-[#E1B1C1] bg-[#fdf6f8]' : 'border-gray-200 bg-white'}">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center space-x-3">
+                                ${createTeacherAvatar(originalTeacher)}
+                                <div>
+                                    <p class="text-xs text-gray-500 uppercase tracking-wide">คิวที่ ${index + 1}</p>
+                                    <p class="text-sm font-medium text-gray-800">${originalName}</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                ${createTeacherAvatar(currentTeacher)}
+                                <div class="text-right">
+                                    <p class="text-xs text-gray-500 uppercase tracking-wide">ผู้ปฏิบัติจริง</p>
+                                    <p class="text-sm font-semibold ${isSubstituted ? 'text-[#894D5B]' : 'text-gray-800'}">${currentName}</p>
+                                    <p class="text-xs text-gray-500">คะแนนคิว ${currentScore}</p>
+                                </div>
+                            </div>
+                        </div>
+                        ${isSubstituted
+                            ? `<p class="text-xs text-[#894D5B] mt-2">แทนคิวของ ${originalName}</p>`
+                            : '<p class="text-xs text-gray-500 mt-2">ตรงตามคิวเดิม</p>'}
+                    </div>
+                `;
+            }).join('');
+        }
+
         function openEventModal(eventId = null) {
             currentEventId = eventId;
             const modal = document.getElementById('event-modal');
@@ -1627,13 +1768,11 @@
                 document.getElementById('event-end-time').value = event.endTime || '';
                 document.getElementById('event-location').value = event.location;
                 document.getElementById('event-quota').value = event.requiredQuota;
-                if (latInput) latInput.value = event.locationLat ?? '';
-                if (lngInput) lngInput.value = event.locationLng ?? '';
+                renderEventAssignmentSummary(event);
             } else {
                 title.textContent = 'เพิ่มงานใหม่';
                 form.reset();
-                if (latInput) latInput.value = '';
-                if (lngInput) lngInput.value = '';
+                renderEventAssignmentSummary(null);
             }
 
             modal.classList.add('show');
@@ -1644,7 +1783,7 @@
         function closeEventModal() {
             document.getElementById('event-modal').classList.remove('show');
             currentEventId = null;
-            resetLocationPicker();
+            renderEventAssignmentSummary(null);
         }
 
         function openTeacherModal(teacherId = null) {
@@ -1796,11 +1935,13 @@
         function confirmAutoAssign(eventId, selectedTeachers) {
             const event = getEventById(eventId);
             const teacherIds = selectedTeachers.map(t => t.teacherId);
-            
+
             // Update event
             event.assignedTeachers = teacherIds;
+            event.assignmentSlots = createAssignmentSlotsFromIds(teacherIds);
             event.status = 'assigned';
-            
+            ensureEventAssignments(event);
+
             // Update teacher stats - ระบบใหม่: เพิ่มคะแนนเมื่อออกงาน
             selectedTeachers.forEach(teacher => {
                 teacher.totalDuties++;
@@ -1823,53 +1964,72 @@
 
         function openSubstitutionModal(eventId) {
             const event = getEventById(eventId);
-            if (!event || event.assignedTeachers.length === 0) return;
+            const slots = event ? getEventAssignmentSlots(event) : [];
+            const currentAssignments = slots.filter(slot => slot.currentTeacherId !== null && slot.currentTeacherId !== undefined);
+
+            if (!event || currentAssignments.length === 0) return;
 
             currentEventId = eventId;
 
-            // Show current assigned teachers with photos
+            const assignedIds = currentAssignments
+                .map(slot => slot.currentTeacherId)
+                .filter(id => id !== null && id !== undefined);
+
             const currentTeachersHtml = `
                 <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <h5 class="font-medium text-gray-800 mb-2">ครูที่ได้รับมอบหมายในงานนี้:</h5>
-                    <div class="flex flex-wrap gap-2">
-                        ${event.assignedTeachers.map(id => {
-                            const teacher = getTeacherById(id);
+                    <div class="space-y-2">
+                        ${slots.map((slot, index) => {
+                            if (slot.currentTeacherId === null || slot.currentTeacherId === undefined) {
+                                return '';
+                            }
+                            const currentTeacher = getTeacherById(slot.currentTeacherId);
+                            const originalTeacher = slot.originalTeacherId ? getTeacherById(slot.originalTeacherId) : null;
+                            const isSubstituted = slot.originalTeacherId && slot.currentTeacherId && slot.originalTeacherId !== slot.currentTeacherId;
                             return `
-                                <div class="flex items-center bg-white px-3 py-2 rounded-lg border">
-                                    ${createTeacherAvatar(teacher)}
-                                    <span class="ml-2 text-sm font-medium">${teacher.name}</span>
+                                <div class="flex items-center justify-between bg-white px-3 py-2 rounded-lg border ${isSubstituted ? 'border-[#E1B1C1]' : 'border-gray-200'}">
+                                    <div class="flex items-center">
+                                        ${createTeacherAvatar(currentTeacher)}
+                                        <div class="ml-2">
+                                            <p class="text-sm font-medium text-gray-800">${currentTeacher ? currentTeacher.name : 'ไม่พบข้อมูล'}</p>
+                                            ${isSubstituted
+                                                ? `<p class="text-xs text-[#894D5B]">แทนคิวของ ${originalTeacher ? originalTeacher.name : 'ไม่ระบุ'}</p>`
+                                                : '<p class="text-xs text-gray-500">คิวเดิม</p>'}
+                                        </div>
+                                    </div>
+                                    <span class="text-xs text-gray-500">คิวที่ ${index + 1}</span>
                                 </div>
                             `;
-                        }).join('')}
+                        }).filter(Boolean).join('')}
                     </div>
                 </div>
             `;
 
-            // Insert current teachers display before the form
             const modalContent = document.querySelector('#substitution-modal .modal-content');
             const existingDisplay = modalContent.querySelector('.current-teachers-display');
             if (existingDisplay) {
                 existingDisplay.remove();
             }
-            
+
             const tempDiv = document.createElement('div');
             tempDiv.className = 'current-teachers-display';
             tempDiv.innerHTML = currentTeachersHtml;
             modalContent.insertBefore(tempDiv, document.getElementById('substitution-form'));
 
-            // Populate original teachers dropdown
             const originalSelect = document.getElementById('original-teacher');
             originalSelect.innerHTML = '<option value="">เลือกครู</option>' +
-                event.assignedTeachers.map(id => {
-                    const teacher = getTeacherById(id);
-                    return `<option value="${id}">${teacher.name} - ${teacher.position}</option>`;
+                currentAssignments.map(slot => {
+                    const currentTeacher = getTeacherById(slot.currentTeacherId);
+                    const originalTeacher = slot.originalTeacherId ? getTeacherById(slot.originalTeacherId) : null;
+                    const currentName = currentTeacher ? currentTeacher.name : 'ไม่พบข้อมูล';
+                    const originalLabel = originalTeacher ? ` (คิวเดิม: ${originalTeacher.name})` : '';
+                    return `<option value="${slot.currentTeacherId}">${currentName}${originalLabel}</option>`;
                 }).join('');
 
-            // Populate substitute teachers dropdown (exclude assigned teachers)
             const substituteSelect = document.getElementById('substitute-teacher');
-            const availableTeachers = teachers.filter(t => !event.assignedTeachers.includes(t.teacherId));
+            const availableTeachers = teachers.filter(t => !assignedIds.includes(t.teacherId));
             substituteSelect.innerHTML = '<option value="">เลือกครู</option>' +
-                availableTeachers.map(teacher => 
+                availableTeachers.map(teacher =>
                     `<option value="${teacher.teacherId}">${teacher.name} - ${teacher.position} (คะแนนคิว: ${teacher.queueScore})</option>`
                 ).join('');
 
@@ -1950,6 +2110,7 @@
                 if (currentEventId) {
                     const event = getEventById(currentEventId);
                     Object.assign(event, eventData);
+                    ensureEventAssignments(event);
 
                     addActivityLog(
                         'manual-edit',
@@ -1961,8 +2122,10 @@
                         eventId: Math.max(...events.map(e => e.eventId), 0) + 1,
                         ...eventData,
                         assignedTeachers: [],
+                        assignmentSlots: [],
                         status: 'pending'
                     };
+                    ensureEventAssignments(newEvent);
                     events.push(newEvent);
 
                     addActivityLog(
@@ -2033,20 +2196,42 @@
             const originalTeacherId = parseInt(document.getElementById('original-teacher').value);
             const substituteTeacherId = parseInt(document.getElementById('substitute-teacher').value);
             const reason = document.getElementById('substitution-reason').value;
-            
+
             if (!originalTeacherId || !substituteTeacherId || !reason.trim()) {
                 alert('กรุณากรอกข้อมูลให้ครบถ้วน');
                 return;
             }
-            
+
             const event = getEventById(currentEventId);
-            const originalTeacher = getTeacherById(originalTeacherId);
+            const slots = getEventAssignmentSlots(event);
+            const slot = slots.find(s => s.currentTeacherId === originalTeacherId) ||
+                slots.find(s => s.originalTeacherId === originalTeacherId);
+
+            const originalQueueTeacherId = slot && slot.originalTeacherId ? slot.originalTeacherId : originalTeacherId;
+            const queueTeacher = getTeacherById(originalQueueTeacherId);
+            const currentAssignedTeacher = getTeacherById(originalTeacherId);
             const substituteTeacher = getTeacherById(substituteTeacherId);
-            
+
             // Update event assignment
             const index = event.assignedTeachers.indexOf(originalTeacherId);
-            event.assignedTeachers[index] = substituteTeacherId;
-            
+            if (index !== -1) {
+                event.assignedTeachers[index] = substituteTeacherId;
+            }
+
+            if (slot) {
+                const slotIndex = slots.indexOf(slot);
+                if (slotIndex !== -1 && slotIndex !== index) {
+                    event.assignedTeachers[slotIndex] = substituteTeacherId;
+                }
+                if (!slot.originalTeacherId) {
+                    slot.originalTeacherId = originalTeacherId;
+                }
+                slot.currentTeacherId = substituteTeacherId;
+                slot.substituteTeacherId = substituteTeacherId;
+            }
+
+            ensureEventAssignments(event);
+
             // Update teacher stats - ระบบใหม่: เพิ่มคะแนนเมื่อมีการแทน
             substituteTeacher.totalDuties++;
             substituteTeacher.swapCount++;
@@ -2056,9 +2241,9 @@
             addActivityLog(
                 'substitution',
                 `แทนบุคลากรในงาน "${event.eventName}"`,
-                `${originalTeacher.name} → ${substituteTeacher.name} | เหตุผล: ${reason}`
+                `คิวเดิม: ${queueTeacher ? queueTeacher.name : 'ไม่ระบุ'} | ผู้มอบหมายล่าสุด: ${currentAssignedTeacher ? currentAssignedTeacher.name : 'ไม่พบข้อมูล'} | ผู้ปฏิบัติจริง: ${substituteTeacher ? substituteTeacher.name : 'ไม่พบข้อมูล'} | เหตุผล: ${reason}`
             );
-            
+
             saveData();
             closeSubstitutionModal();
             showView('events');
