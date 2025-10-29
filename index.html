@@ -1752,9 +1752,14 @@
             const modal = document.getElementById('event-modal');
             const title = document.getElementById('event-modal-title');
             const form = document.getElementById('event-form');
+            const latInput = document.getElementById('event-location-lat');
+            const lngInput = document.getElementById('event-location-lng');
+
+            let targetEvent = null;
 
             if (eventId) {
                 const event = getEventById(eventId);
+                targetEvent = event;
                 title.textContent = 'แก้ไขงาน';
                 document.getElementById('event-name').value = event.eventName;
                 document.getElementById('event-details').value = event.details || '';
@@ -1771,6 +1776,8 @@
             }
 
             modal.classList.add('show');
+
+            setTimeout(() => prepareLocationPicker(targetEvent), 120);
         }
 
         function closeEventModal() {
@@ -2300,6 +2307,16 @@
                 });
             }
         }
+
+        window.initMap = function() {
+            mapsApiReady = true;
+            initializeLocationMap();
+
+            if (pendingLocationEvent) {
+                prepareLocationPicker(pendingLocationEvent);
+                pendingLocationEvent = null;
+            }
+        };
 
         // Initialize application
         document.addEventListener('DOMContentLoaded', async function() {
