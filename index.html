@@ -2117,79 +2117,83 @@
             await loadInitialData();
         });
     </script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-analytics-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-database-compat.js"></script>
-  <script>
-    (function() {
-      const firebaseConfig = window.firebaseAppConfig || {
-        apiKey: "AIzaSyDv--hw2BWKE-NTFrCMpTNz9LEzGK8l5PE",
-        authDomain: "thaigogo-e9112.firebaseapp.com",
-        databaseURL: "https://thaigogo-e9112-default-rtdb.asia-southeast1.firebasedatabase.app",
-        projectId: "thaigogo-e9112",
-        storageBucket: "thaigogo-e9112.firebasestorage.app",
-        messagingSenderId: "820257616141",
-        appId: "1:820257616141:web:c92cf50ae5e05491fb4044",
-        measurementId: "G-4FX435MNDC"
+  <script type="module">
+    import { initializeApp, getApps, getApp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
+    import { getAnalytics, isSupported as analyticsIsSupported } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-analytics.js';
+    import { getDatabase, ref, get, set, update } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js';
+
+    const fallbackConfig = {
+      apiKey: 'AIzaSyDv--hw2BWKE-NTFrCMpTNz9LEzGK8l5PE',
+      authDomain: 'thaigogo-e9112.firebaseapp.com',
+      databaseURL: 'https://thaigogo-e9112-default-rtdb.asia-southeast1.firebasedatabase.app',
+      projectId: 'thaigogo-e9112',
+      storageBucket: 'thaigogo-e9112.firebasestorage.app',
+      messagingSenderId: '820257616141',
+      appId: '1:820257616141:web:c92cf50ae5e05491fb4044',
+      measurementId: 'G-4FX435MNDC'
+    };
+
+    const providedConfig = window.firebaseAppConfig || {};
+    const firebaseConfig = {
+      ...fallbackConfig,
+      ...providedConfig,
+      databaseURL: providedConfig.databaseURL || fallbackConfig.databaseURL
+    };
+
+    try {
+      const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
+      analyticsIsSupported()
+        .then((supported) => {
+          if (supported) {
+            try {
+              getAnalytics(app);
+            } catch (analyticsError) {
+              console.info('Firebase Analytics unavailable in this environment.', analyticsError);
+            }
+          }
+        })
+        .catch(() => {});
+
+      const database = getDatabase(app);
+      const helpers = {
+        get: async (path = '') => {
+          const normalizedPath = String(path).replace(/^\/+/, '');
+          const dbRef = normalizedPath ? ref(database, normalizedPath) : ref(database);
+          const snapshot = await get(dbRef);
+          return snapshot.exists() ? snapshot.val() : null;
+        },
+        put: async (path = '', value) => {
+          const normalizedPath = String(path).replace(/^\/+/, '');
+          const dbRef = normalizedPath ? ref(database, normalizedPath) : ref(database);
+          await set(dbRef, value);
+          return value;
+        },
+        patch: async (path = '', value) => {
+          if (!value || typeof value !== 'object') {
+            throw new Error('PATCH requests require a JSON object payload');
+          }
+          const normalizedPath = String(path).replace(/^\/+/, '');
+          const dbRef = normalizedPath ? ref(database, normalizedPath) : ref(database);
+          await update(dbRef, value);
+          return value;
+        }
       };
 
-      try {
-        if (!firebase.apps.length) {
-          firebase.initializeApp(firebaseConfig);
-        }
+      window.firebaseApp = app;
+      window.firebaseDatabase = database;
+      window.firebaseDbApi = helpers;
 
-        try {
-          if (typeof firebase.analytics === 'function') {
-            firebase.analytics();
-          }
-        } catch (analyticsError) {
-          console.info('Firebase Analytics is unavailable in this environment.', analyticsError);
-        }
-
-        const database = firebase.database();
-        const helpers = {
-          get: async (path) => {
-            const normalizedPath = (path || '').replace(/^\/+/, '');
-            const ref = normalizedPath ? database.ref(normalizedPath) : database.ref();
-            if (typeof ref.get === 'function') {
-              const snapshot = await ref.get();
-              return snapshot.exists() ? snapshot.val() : null;
-            }
-            const snapshot = await ref.once('value');
-            return snapshot.exists() ? snapshot.val() : null;
-          },
-          put: async (path, value) => {
-            const normalizedPath = (path || '').replace(/^\/+/, '');
-            const ref = normalizedPath ? database.ref(normalizedPath) : database.ref();
-            await ref.set(value);
-            return value;
-          },
-          patch: async (path, value) => {
-            if (!value || typeof value !== 'object') {
-              throw new Error('PATCH requests require a JSON object payload');
-            }
-            const normalizedPath = (path || '').replace(/^\/+/, '');
-            const ref = normalizedPath ? database.ref(normalizedPath) : database.ref();
-            await ref.update(value);
-            return value;
-          }
-        };
-
-        window.firebaseApp = firebase.app();
-        window.firebaseDatabase = database;
-        window.firebaseDbApi = helpers;
-
-        if (typeof window.notifyFirebaseReady === 'function') {
-          window.notifyFirebaseReady(window.firebaseApp, database, helpers);
-        }
-      } catch (error) {
-        if (typeof window.notifyFirebaseInitError === 'function') {
-          window.notifyFirebaseInitError(error);
-        } else {
-          console.error('Firebase initialization error:', error);
-        }
+      if (typeof window.notifyFirebaseReady === 'function') {
+        window.notifyFirebaseReady(app, database, helpers);
       }
-    })();
+    } catch (error) {
+      if (typeof window.notifyFirebaseInitError === 'function') {
+        window.notifyFirebaseInitError(error);
+      } else {
+        console.error('Firebase initialization error:', error);
+      }
+    }
   </script>
  <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'995b9a46b40c072d',t:'MTc2MTY2Njc3MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
