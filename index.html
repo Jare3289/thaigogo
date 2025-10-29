@@ -728,7 +728,6 @@
 
         function canUseDirectFirebase() {
             return !!(
-                window.firebaseDatabase &&
                 window.firebaseDbApi &&
                 typeof window.firebaseDbApi.get === 'function' &&
                 typeof window.firebaseDbApi.put === 'function'
@@ -2117,78 +2116,175 @@
             await loadInitialData();
         });
     </script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-analytics-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-database-compat.js"></script>
-  <script>
-    (function() {
-      const fallbackConfig = {
-        apiKey: 'AIzaSyDv--hw2BWKE-NTFrCMpTNz9LEzGK8l5PE',
-        authDomain: 'thaigogo-e9112.firebaseapp.com',
-        databaseURL: 'https://thaigogo-e9112-default-rtdb.asia-southeast1.firebasedatabase.app',
-        projectId: 'thaigogo-e9112',
-        storageBucket: 'thaigogo-e9112.firebasestorage.app',
-        messagingSenderId: '820257616141',
-        appId: '1:820257616141:web:c92cf50ae5e05491fb4044',
-        measurementId: 'G-4FX435MNDC'
-      };
+  <script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+  import {
+    getFirestore,
+    doc,
+    getDoc,
+    setDoc,
+    updateDoc,
+    collection,
+    getDocs,
+    query,
+    orderBy,
+    writeBatch
+  } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
-      const providedConfig = window.firebaseAppConfig || {};
-      const firebaseConfig = Object.assign({}, fallbackConfig, providedConfig);
+  const fallbackConfig = {
+    apiKey: 'AIzaSyDv--hw2BWKE-NTFrCMpTNz9LEzGK8l5PE',
+    authDomain: 'thaigogo-e9112.firebaseapp.com',
+    projectId: 'thaigogo-e9112',
+    storageBucket: 'thaigogo-e9112.firebasestorage.app',
+    messagingSenderId: '820257616141',
+    appId: '1:820257616141:web:c92cf50ae5e05491fb4044',
+    measurementId: 'G-4FX435MNDC'
+  };
 
-      try {
-        const app = firebase.apps && firebase.apps.length
-          ? firebase.app()
-          : firebase.initializeApp(firebaseConfig);
+  const providedConfig = window.firebaseAppConfig || {};
+  const firebaseConfig = Object.assign({}, fallbackConfig, providedConfig);
 
-        try {
-          if (firebase.analytics) {
-            firebase.analytics();
+  try {
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const authReady = new Promise((resolve, reject) => {
+      onAuthStateChanged(
+        auth,
+        (user) => {
+          if (user) {
+            resolve(user);
+          } else {
+            signInAnonymously(auth).catch((authError) => {
+              console.error('Anonymous sign-in failed:', authError);
+              reject(authError);
+            });
           }
-        } catch (analyticsError) {
-          console.info('Firebase Analytics unavailable in this environment.', analyticsError);
+        },
+        (error) => {
+          console.error('Auth observer error:', error);
+          reject(error);
         }
+      );
+    });
 
-        const database = firebase.database();
-        const helpers = {
-          get: async (path = '') => {
-            const normalizedPath = String(path).replace(/^\/+/, '');
-            const dbRef = normalizedPath ? database.ref(normalizedPath) : database.ref();
-            const snapshot = await dbRef.once('value');
-            return snapshot.exists() ? snapshot.val() : null;
-          },
-          put: async (path = '', value) => {
-            const normalizedPath = String(path).replace(/^\/+/, '');
-            const dbRef = normalizedPath ? database.ref(normalizedPath) : database.ref();
-            await dbRef.set(value);
-            return value;
-          },
-          patch: async (path = '', value) => {
-            if (!value || typeof value !== 'object') {
-              throw new Error('PATCH requests require a JSON object payload');
-            }
-            const normalizedPath = String(path).replace(/^\/+/, '');
-            const dbRef = normalizedPath ? database.ref(normalizedPath) : database.ref();
-            await dbRef.update(value);
-            return value;
+    const helpers = {
+      async get(path = "") {
+        await authReady;
+        const seg = path.split("/").filter(Boolean);
+
+        if (seg.length === 1) {
+          const key = seg[0];
+          if (key === "config") {
+            const snap = await getDoc(doc(db, "config", "app"));
+            return snap.exists() ? snap.data() : null;
           }
-        };
-
-        window.firebaseApp = app;
-        window.firebaseDatabase = database;
-        window.firebaseDbApi = helpers;
-
-        if (typeof window.notifyFirebaseReady === 'function') {
-          window.notifyFirebaseReady(app, database, helpers);
+          if (key === "teachers") {
+            const snap = await getDocs(query(collection(db, "teachers"), orderBy("teacherId", "asc")));
+            return snap.docs.map((d) => d.data());
+          }
+          if (key === "events") {
+            const snap = await getDocs(query(collection(db, "events"), orderBy("eventId", "asc")));
+            return snap.docs.map((d) => d.data());
+          }
+          if (key === "activityLog") {
+            const snap = await getDocs(query(collection(db, "activityLog"), orderBy("timestamp", "desc")));
+            return snap.docs.map((d) => d.data());
+          }
         }
-      } catch (error) {
-        if (typeof window.notifyFirebaseInitError === 'function') {
-          window.notifyFirebaseInitError(error);
-        } else {
-          console.error('Firebase initialization error:', error);
+
+        if (seg.length === 2) {
+          const [col, id] = seg;
+          const snap = await getDoc(doc(db, col, String(id)));
+          return snap.exists() ? snap.data() : null;
         }
+
+        throw new Error(`Unsupported GET path: ${path}`);
+      },
+
+      async put(path = "", value) {
+        await authReady;
+        const seg = path.split("/").filter(Boolean);
+
+        if (seg.length === 1 && seg[0] === "config") {
+          await setDoc(doc(db, "config", "app"), value ?? {}, { merge: false });
+          return value;
+        }
+
+        if (seg.length === 1 && ["teachers", "events", "activityLog"].includes(seg[0])) {
+          const col = seg[0];
+          const batch = writeBatch(db);
+
+          const existing = await getDocs(collection(db, col));
+          existing.forEach((docSnap) => batch.delete(docSnap.ref));
+
+          const arr = Array.isArray(value) ? value : [];
+          for (const row of arr) {
+            const id =
+              col === "teachers" ? String(row.teacherId) :
+              col === "events" ? String(row.eventId) :
+              String(row.id ?? Date.now());
+            batch.set(doc(db, col, id), row ?? {}, { merge: false });
+          }
+
+          await batch.commit();
+          return value;
+        }
+
+        if (seg.length === 2) {
+          const [col, id] = seg;
+          await setDoc(doc(db, col, String(id)), value ?? {}, { merge: false });
+          return value;
+        }
+
+        throw new Error(`Unsupported PUT path: ${path}`);
+      },
+
+      async patch(path = "", value) {
+        await authReady;
+        const seg = path.split("/").filter(Boolean);
+
+        if (seg.length === 2) {
+          const [col, id] = seg;
+          await updateDoc(doc(db, col, String(id)), value ?? {});
+          return value;
+        }
+
+        if (seg.length === 1 && ["teachers", "events", "activityLog"].includes(seg[0])) {
+          const col = seg[0];
+          const arr = Array.isArray(value) ? value : [];
+          const batch = writeBatch(db);
+          for (const row of arr) {
+            const id =
+              col === "teachers" ? String(row.teacherId) :
+              col === "events" ? String(row.eventId) :
+              String(row.id ?? Date.now());
+            batch.set(doc(db, col, id), row ?? {}, { merge: true });
+          }
+          await batch.commit();
+          return value;
+        }
+
+        throw new Error("PATCH requires collection/id or mergeable array");
       }
-    })();
+    };
+
+    window.firebaseApp = app;
+    window.firebaseDatabase = null;
+    window.firebaseDbApi = helpers;
+
+    if (typeof window.notifyFirebaseReady === "function") {
+      window.notifyFirebaseReady(app, null, helpers);
+    }
+  } catch (error) {
+    if (typeof window.notifyFirebaseInitError === "function") {
+      window.notifyFirebaseInitError(error);
+    } else {
+      console.error("Firebase initialization error:", error);
+    }
+  }
   </script>
  <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'995b9a46b40c072d',t:'MTc2MTY2Njc3MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
