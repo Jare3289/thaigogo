@@ -609,6 +609,8 @@
       <div class="form-group md:w-1/2"><label class="form-label">จำนวนครูที่ต้องการ</label> <input type="number" id="event-quota" class="form-input" min="1" required>
       </div>
      </div>
+     <input type="hidden" id="event-location-lat" value="">
+     <input type="hidden" id="event-location-lng" value="">
      <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="closeEventModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
      </div>
     </form>
@@ -1913,95 +1915,116 @@
         }
 
         // Form submissions
+        function safeValue(id) {
+            const el = document.getElementById(id);
+            return el ? el.value : '';
+        }
+
         document.getElementById('event-form').addEventListener('submit', function(e) {
             e.preventDefault();
-            
-            const startTime = document.getElementById('event-start-time').value;
-            const endTime = document.getElementById('event-end-time').value;
-            const eventData = {
-                eventName: document.getElementById('event-name').value,
-                details: document.getElementById('event-details').value,
-                date: document.getElementById('event-date').value,
-                startTime: startTime,
-                endTime: endTime,
-                time: `${startTime}-${endTime}`,
-                location: document.getElementById('event-location').value,
-                locationLat: parseFloat(document.getElementById('event-location-lat').value) || null,
-                locationLng: parseFloat(document.getElementById('event-location-lng').value) || null,
-                requiredQuota: parseInt(document.getElementById('event-quota').value)
-            };
+            const form = e.currentTarget;
+            try {
+                if (!form.reportValidity()) return;
 
-            if (currentEventId) {
-                // Edit existing event
-                const event = getEventById(currentEventId);
-                Object.assign(event, eventData);
+                const startTime = safeValue('event-start-time');
+                const endTime = safeValue('event-end-time');
 
-                addActivityLog(
-                    'manual-edit',
-                    `แก้ไขข้อมูลงาน "${eventData.eventName}"`,
-                    `วันที่: ${formatDateThai(eventData.date)} | เวลา: ${eventData.time} | สถานที่: ${eventData.location} | โควตาครู: ${eventData.requiredQuota} คน`
-                );
-            } else {
-                // Add new event
-                const newEvent = {
-                    eventId: Math.max(...events.map(e => e.eventId), 0) + 1,
-                    ...eventData,
-                    assignedTeachers: [],
-                    status: 'pending'
+                const latRaw = parseFloat(safeValue('event-location-lat'));
+                const lngRaw = parseFloat(safeValue('event-location-lng'));
+                const locationLat = Number.isFinite(latRaw) ? latRaw : null;
+                const locationLng = Number.isFinite(lngRaw) ? lngRaw : null;
+
+                const eventData = {
+                    eventName: safeValue('event-name'),
+                    details: safeValue('event-details'),
+                    date: safeValue('event-date'),
+                    startTime,
+                    endTime,
+                    time: `${startTime}-${endTime}`,
+                    location: safeValue('event-location'),
+                    locationLat,
+                    locationLng,
+                    requiredQuota: parseInt(safeValue('event-quota')) || 0
                 };
-                events.push(newEvent);
 
-                addActivityLog(
-                    'manual-edit',
-                    `เพิ่มงานใหม่ "${eventData.eventName}"`,
-                    `วันที่: ${formatDateThai(eventData.date)} | เวลา: ${eventData.time} | สถานที่: ${eventData.location} | โควตาครู: ${eventData.requiredQuota} คน`
-                );
+                if (currentEventId) {
+                    const event = getEventById(currentEventId);
+                    Object.assign(event, eventData);
+
+                    addActivityLog(
+                        'manual-edit',
+                        `แก้ไขข้อมูลงาน "${eventData.eventName}"`,
+                        `วันที่: ${formatDateThai(eventData.date)} | เวลา: ${eventData.time} | สถานที่: ${eventData.location} | โควตาครู: ${eventData.requiredQuota} คน`
+                    );
+                } else {
+                    const newEvent = {
+                        eventId: Math.max(...events.map(e => e.eventId), 0) + 1,
+                        ...eventData,
+                        assignedTeachers: [],
+                        status: 'pending'
+                    };
+                    events.push(newEvent);
+
+                    addActivityLog(
+                        'manual-edit',
+                        `เพิ่มงานใหม่ "${eventData.eventName}"`,
+                        `วันที่: ${formatDateThai(eventData.date)} | เวลา: ${eventData.time} | สถานที่: ${eventData.location} | โควตาครู: ${eventData.requiredQuota} คน`
+                    );
+                }
+
+                saveData();
+                closeEventModal();
+                showView('events');
+            } catch (err) {
+                console.error('Event form submit failed:', err);
+                alert('บันทึกงานไม่สำเร็จ: ' + (err?.message || err));
             }
-
-            saveData();
-            closeEventModal();
-            showView('events');
         });
 
         document.getElementById('teacher-form').addEventListener('submit', function(e) {
             e.preventDefault();
-            
-            const teacherData = {
-                name: document.getElementById('teacher-name').value,
-                position: document.getElementById('teacher-position').value,
-                queueScore: parseInt(document.getElementById('teacher-queue-score').value)
-            };
+            const form = e.currentTarget;
+            try {
+                if (!form.reportValidity()) return;
 
-            if (currentTeacherId) {
-                // Edit existing teacher
-                const teacher = getTeacherById(currentTeacherId);
-                Object.assign(teacher, teacherData);
-                
-                addActivityLog(
-                    'manual-edit',
-                    `แก้ไขข้อมูลครู "${teacherData.name}"`,
-                    `ตำแหน่ง: ${teacherData.position} | คะแนนคิว: ${teacherData.queueScore}`
-                );
-            } else {
-                // Add new teacher
-                const newTeacher = {
-                    teacherId: Math.max(...teachers.map(t => t.teacherId), 0) + 1,
-                    ...teacherData,
-                    totalDuties: 0,
-                    swapCount: 0
+                const teacherData = {
+                    name: safeValue('teacher-name'),
+                    position: safeValue('teacher-position'),
+                    queueScore: parseInt(safeValue('teacher-queue-score')) || 0
                 };
-                teachers.push(newTeacher);
-                
-                addActivityLog(
-                    'manual-edit',
-                    `เพิ่มครูใหม่ "${teacherData.name}"`,
-                    `ตำแหน่ง: ${teacherData.position} | คะแนนคิวเริ่มต้น: ${teacherData.queueScore}`
-                );
-            }
 
-            saveData();
-            closeTeacherModal();
-            showView('teachers');
+                if (currentTeacherId) {
+                    const teacher = getTeacherById(currentTeacherId);
+                    Object.assign(teacher, teacherData);
+
+                    addActivityLog(
+                        'manual-edit',
+                        `แก้ไขข้อมูลครู "${teacherData.name}"`,
+                        `ตำแหน่ง: ${teacherData.position} | คะแนนคิว: ${teacherData.queueScore}`
+                    );
+                } else {
+                    const newTeacher = {
+                        teacherId: Math.max(...teachers.map(t => t.teacherId), 0) + 1,
+                        ...teacherData,
+                        totalDuties: 0,
+                        swapCount: 0
+                    };
+                    teachers.push(newTeacher);
+
+                    addActivityLog(
+                        'manual-edit',
+                        `เพิ่มครูใหม่ "${teacherData.name}"`,
+                        `ตำแหน่ง: ${teacherData.position} | คะแนนคิวเริ่มต้น: ${teacherData.queueScore}`
+                    );
+                }
+
+                saveData();
+                closeTeacherModal();
+                showView('teachers');
+            } catch (err) {
+                console.error('Teacher form submit failed:', err);
+                alert('บันทึกข้อมูลครูไม่สำเร็จ: ' + (err?.message || err));
+            }
         });
 
         document.getElementById('substitution-form').addEventListener('submit', function(e) {
@@ -2286,5 +2309,13 @@
     }
   }
   </script>
+ <script>
+  window.addEventListener('error', (e) => {
+   console.error('Global error:', e.error || e.message || e);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+   console.error('Unhandled promise rejection:', e.reason || e);
+  });
+ </script>
  <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'995b9a46b40c072d',t:'MTc2MTY2Njc3MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
