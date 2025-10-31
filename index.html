@@ -353,6 +353,16 @@
             color: #2a5a6f;
         }
 
+        .next-queue-card .queue-mini-stat.is-training {
+            background: rgba(225, 177, 193, 0.35);
+            color: #5b2d38;
+        }
+
+        .next-queue-card .queue-mini-stat.is-focus {
+            border: 1px solid rgba(137, 77, 91, 0.35);
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
         .next-queue-card .queue-mini-stat.is-sub {
             background: rgba(136, 168, 42, 0.18);
             color: var(--warning-color);
@@ -765,6 +775,15 @@
     <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
    </div>
   </div>
+  <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
+   <div class="text-center">
+    <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
+   </div>
+  </div>
   <script>
         // Firebase initialization bridge (shared with module loader)
         window.firebaseAppConfig = window.firebaseAppConfig || {
@@ -803,6 +822,8 @@
             console.error('Firebase initialization failed:', error);
             showFirebaseStatus('error', `Firebase เริ่มต้นไม่สำเร็จ: ${extractFirebaseMessage(error)}`, true);
         };
+
+        window.callToAction = window.callToAction || function() { return null; };
 
         // Default configuration
         const defaultConfig = {
@@ -1731,23 +1752,115 @@
             return collection.find(e => e.eventId === id) || null;
         }
 
-        // ฟังก์ชันสำหรับหาครูที่ควรได้รับงานต่อไป (หลีกเลี่ยงคนที่ออกงานล่าสุด)
-        function getNextQueueTeachers(limit = 13) {
+        // ฟังก์ชันสำหรับหาครูที่ควรได้รับงาน/อบรมต่อไป (เรียงตามคะแนนและประวัติ)
+        function getNextQueueTeachers(limit = 13, queueType = QUEUE_TYPES.DUTY) {
             return [...teachers]
                 .map(teacher => {
                     ensureTeacherStats(teacher);
                     return teacher;
                 })
-                .sort((a, b) => {
-                    if (a.queueScore !== b.queueScore) {
-                        return a.queueScore - b.queueScore;
-                    }
-
-                    const dateA = a.lastEventDate ? new Date(a.lastEventDate) : new Date(0);
-                    const dateB = b.lastEventDate ? new Date(b.lastEventDate) : new Date(0);
-                    return dateA - dateB;
-                })
+                .sort((a, b) => compareTeachersForQueue(a, b, queueType))
                 .slice(0, limit);
+        }
+
+        function compareTeachersForQueue(a, b, queueType = QUEUE_TYPES.DUTY) {
+            const scoreA = Number.isFinite(a.queueScore) ? a.queueScore : 0;
+            const scoreB = Number.isFinite(b.queueScore) ? b.queueScore : 0;
+
+            if (scoreA !== scoreB) {
+                return scoreA - scoreB;
+            }
+
+            const typeDateA = safeDate(queueType === QUEUE_TYPES.TRAINING ? a.lastTrainingDate : a.lastDutyDate) || new Date(0);
+            const typeDateB = safeDate(queueType === QUEUE_TYPES.TRAINING ? b.lastTrainingDate : b.lastDutyDate) || new Date(0);
+
+            if (typeDateA.getTime() !== typeDateB.getTime()) {
+                return typeDateA - typeDateB;
+            }
+
+            const overallDateA = safeDate(a.lastEventDate) || new Date(0);
+            const overallDateB = safeDate(b.lastEventDate) || new Date(0);
+
+            if (overallDateA.getTime() !== overallDateB.getTime()) {
+                return overallDateA - overallDateB;
+            }
+
+            return (a.teacherId || 0) - (b.teacherId || 0);
+        }
+
+        function buildNextQueueSection(queueType, queueTeachers) {
+            const isTraining = queueType === QUEUE_TYPES.TRAINING;
+            const label = isTraining ? 'คิวอบรม' : 'คิวออกงาน';
+            const accentBg = isTraining ? 'rgba(225, 177, 193, 0.55)' : 'rgba(196, 233, 248, 0.55)';
+            const accentText = isTraining ? '#5b2d38' : '#2a5a6f';
+
+            if (!queueTeachers || queueTeachers.length === 0) {
+                return `
+                    <div class="space-y-3">
+                        <div class="flex items-center gap-2 text-xs font-semibold text-gray-700">
+                            <span class="inline-flex items-center px-3 py-1 rounded-full" style="background:${accentBg}; color:${accentText};">${label}</span>
+                            <span class="text-[11px] text-gray-500">ยังไม่มีข้อมูลครูในแถวนี้</span>
+                        </div>
+                        <p class="text-gray-500 text-center py-4 text-sm">ยังไม่มีข้อมูลครู</p>
+                    </div>
+                `;
+            }
+
+            const cardsHtml = queueTeachers
+                .map((teacher, index) => renderNextQueueCard(teacher, index, queueType))
+                .join('');
+
+            return `
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between text-xs text-gray-600">
+                        <div class="flex items-center gap-2">
+                            <span class="inline-flex items-center px-3 py-1 rounded-full font-semibold" style="background:${accentBg}; color:${accentText};">${label}</span>
+                            <span>เรียงตามคะแนนคิวล่าสุด</span>
+                        </div>
+                        <span>${queueTeachers.length} คน</span>
+                    </div>
+                    <div class="next-queue-grid">
+                        ${cardsHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderNextQueueCard(teacher, index, queueType) {
+            if (!teacher) {
+                return '';
+            }
+
+            const rankIcon = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🎯';
+            const dutyClass = 'queue-mini-stat is-duty' + (queueType === QUEUE_TYPES.DUTY ? ' is-focus' : '');
+            const trainingClass = 'queue-mini-stat is-training' + (queueType === QUEUE_TYPES.TRAINING ? ' is-focus' : '');
+            const dutyCount = teacher.dutyDuties ?? 0;
+            const trainingCount = teacher.trainingDuties ?? 0;
+            const swapCount = teacher.swapCount ?? 0;
+            const lastKeyDate = queueType === QUEUE_TYPES.TRAINING
+                ? (teacher.lastTrainingDate || teacher.lastEventDate)
+                : (teacher.lastDutyDate || teacher.lastEventDate);
+            const lastDateText = lastKeyDate ? `ล่าสุด ${formatDateThai(lastKeyDate)}` : '';
+
+            return `
+                <div class="next-queue-card">
+                    <div class="w-full flex items-center justify-between text-[11px] text-gray-500 font-semibold">
+                        <span class="rank-badge">${rankIcon} #${index + 1}</span>
+                        <span class="text-sm font-bold text-[#5b2d38]">คะแนน ${teacher.queueScore}</span>
+                    </div>
+                    ${createTeacherAvatar(teacher, true)}
+                    <div class="text-center space-y-1 w-full">
+                        <h4 class="font-semibold text-sm text-gray-900 leading-tight">${teacher.name}</h4>
+                        <p class="text-[11px] text-gray-500 leading-tight">${teacher.position}</p>
+                        ${lastDateText ? `<p class="text-[10px] text-gray-400 leading-tight">${lastDateText}</p>` : ''}
+                    </div>
+                    <div class="w-full space-y-1">
+                        <div class="${dutyClass}"><span>งาน</span><span class="font-semibold text-gray-700">${dutyCount}</span></div>
+                        <div class="${trainingClass}"><span>อบรม</span><span class="font-semibold text-gray-700">${trainingCount}</span></div>
+                        <div class="queue-mini-stat is-sub"><span>แทนรวม</span><span class="font-semibold text-gray-700">${swapCount}</span></div>
+                    </div>
+                </div>
+            `;
         }
 
         // Navigation
@@ -1828,39 +1941,15 @@
 
             document.getElementById('latest-event').innerHTML = latestEventHtml;
 
-            // Render next queue (all teachers sorted by queue score, displayed horizontally)
-            const nextQueueTeachers = getNextQueueTeachers(13)
-                .map((teacher, index) => ({ ...teacher, queueRank: index + 1 }));
+            // Render next queue split by duty/training rows
+            const dutyQueueTeachers = getNextQueueTeachers(13, QUEUE_TYPES.DUTY);
+            const trainingQueueTeachers = getNextQueueTeachers(13, QUEUE_TYPES.TRAINING);
+            const divider = '<div class="border-t border-dashed border-rose-200 my-4"></div>';
 
-            const nextQueueHtml = nextQueueTeachers.length > 0 ? nextQueueTeachers.map((teacher, index) => {
-                const rankIcon = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🎯';
-
-                return `
-                    <div class="next-queue-card">
-                        <div class="w-full flex items-center justify-between text-[11px] text-gray-500 font-semibold">
-                            <span class="rank-badge">${rankIcon} #${teacher.queueRank}</span>
-                            <span class="text-sm font-bold text-[#5b2d38]">คะแนน ${teacher.queueScore}</span>
-                        </div>
-                        ${createTeacherAvatar(teacher, true)}
-                        <div class="text-center space-y-1 w-full">
-                            <h4 class="font-semibold text-sm text-gray-900 leading-tight">${teacher.name}</h4>
-                            <p class="text-[11px] text-gray-500 leading-tight">${teacher.position}</p>
-                            ${teacher.lastEventDate ? `<p class="text-[10px] text-gray-400 leading-tight">ล่าสุด ${formatDateThai(teacher.lastEventDate)}</p>` : ''}
-                        </div>
-                        <div class="w-full space-y-1">
-                            <div class="queue-mini-stat is-duty"><span>งาน</span><span class="font-semibold text-gray-700">${teacher.dutyDuties ?? 0}</span></div>
-                            <div class="queue-mini-stat is-duty"><span>อบรม</span><span class="font-semibold text-gray-700">${teacher.trainingDuties ?? 0}</span></div>
-                            <div class="queue-mini-stat is-sub"><span>แทนรวม</span><span class="font-semibold text-gray-700">${teacher.swapCount || 0}</span></div>
-                        </div>
-                    </div>
-                `;
-            }).join('') : '<p class="text-gray-500 text-center py-6">ยังไม่มีข้อมูลครู</p>';
-
-            document.getElementById('next-queue').innerHTML = `
-                <div class="next-queue-grid">
-                    ${nextQueueHtml}
-                </div>
-            `;
+            document.getElementById('next-queue').innerHTML = [
+                buildNextQueueSection(QUEUE_TYPES.DUTY, dutyQueueTeachers),
+                buildNextQueueSection(QUEUE_TYPES.TRAINING, trainingQueueTeachers)
+            ].join(divider);
 
             // Render urgent events (pending events sorted by date)
             const urgentEvents = events
