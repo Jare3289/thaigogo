@@ -403,6 +403,10 @@
         <div class="flex items-center"><span class="mr-2">📅</span> <span>ออกงาน</span>
         </div>
        </div>
+       <div class="nav-item px-4 py-2 cursor-pointer rounded-lg" data-view="training">
+        <div class="flex items-center"><span class="mr-2">🎓</span> <span>อบรม</span>
+        </div>
+       </div>
        <div class="nav-item px-4 py-2 cursor-pointer rounded-lg" data-view="teachers">
         <div class="flex items-center"><span class="mr-2">👥</span> <span>ครู</span>
         </div>
@@ -528,6 +532,63 @@
       <div id="events-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"><!-- Event cards will be populated here -->
       </div>
      </div>
+    </div><!-- Training Management View -->
+    <div id="training-view" class="view hidden">
+     <div class="view-container">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+       <h2 class="text-2xl font-bold text-gray-800">อบรม</h2>
+       <div class="flex flex-wrap gap-3">
+        <button class="btn-primary" onclick="openEventModal(null, QUEUE_TYPES.TRAINING)"><span class="mr-2">+</span>เพิ่มการอบรม</button>
+        <button class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50" onclick="showTrainingQueueGuide()">คู่มือการจัดคิวอบรม</button>
+       </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+       <div class="card p-6 border-l-4" style="border-left-color: var(--secondary-bg);">
+        <div class="flex items-center">
+         <div class="p-3 rounded-full mr-4" style="background: rgba(225, 177, 193, 0.35); color: var(--secondary-bg);"><span class="text-2xl">🎓</span>
+         </div>
+         <div>
+          <p class="text-sm text-gray-600">การอบรมทั้งหมด</p>
+          <p class="text-2xl font-bold" style="color: var(--secondary-bg);" id="total-training-events">0</p>
+         </div>
+        </div>
+       </div>
+       <div class="card p-6 border-l-4" style="border-left-color: #88A82A;">
+        <div class="flex items-center">
+         <div class="p-3 rounded-full mr-4" style="background: rgba(136, 168, 42, 0.1); color: #88A82A;"><span class="text-2xl">✅</span>
+         </div>
+         <div>
+          <p class="text-sm text-gray-600">จัดคิวแล้ว</p>
+          <p class="text-2xl font-bold" style="color: #88A82A;" id="assigned-training-events">0</p>
+         </div>
+        </div>
+       </div>
+       <div class="card p-6 border-l-4" style="border-left-color: var(--accent-color);">
+        <div class="flex items-center">
+         <div class="p-3 rounded-full mr-4" style="background: rgba(196, 233, 248, 0.3); color: #1E90FF;"><span class="text-2xl">⏳</span>
+         </div>
+         <div>
+          <p class="text-sm text-gray-600">รอจัดคิว</p>
+          <p class="text-2xl font-bold" style="color: #1E90FF;" id="pending-training-events">0</p>
+         </div>
+        </div>
+       </div>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+       <div class="card p-6">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">การอบรมที่กำลังจะถึง</h3>
+        <div id="upcoming-training-events" class="space-y-3"></div>
+       </div>
+       <div class="card p-6">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">ครูที่ได้อบรมล่าสุด</h3>
+        <div id="recent-training-teachers" class="space-y-3"></div>
+       </div>
+      </div>
+      <div class="card p-6 mt-4">
+       <h3 class="text-lg font-semibold text-gray-800 mb-4">รายละเอียดการอบรมทั้งหมด</h3>
+       <div id="training-events-cards" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+      </div>
+     </div>
     </div><!-- Teachers Management View -->
     <div id="teachers-view" class="view hidden">
      <div class="view-container">
@@ -545,7 +606,8 @@
             <th>ตำแหน่ง</th>
             <th>คะแนนคิว</th>
             <th>ออกงาน</th>
-            <th>แทน</th>
+            <th>อบรม</th>
+            <th>แทนรวม</th>
            </tr>
           </thead>
           <tbody id="teachers-table-body"></tbody>
@@ -721,16 +783,167 @@
         const PRIMARY_COLOR = '#894D5B';
         const SECONDARY_COLOR = '#E1B1C1';
 
+        const QUEUE_TYPES = Object.freeze({
+            DUTY: 'duty',
+            TRAINING: 'training'
+        });
+        window.QUEUE_TYPES = QUEUE_TYPES;
+
         // Data structures
         let systemConfig = { ...defaultConfig };
         let teachers = [];
         let events = [];
+        let trainingEvents = [];
         let activityLog = [];
         let currentEventId = null;
         let currentTeacherId = null;
+        let currentEventQueueType = QUEUE_TYPES.DUTY;
         let selectedTeacherId = null;
         let dataInitialized = false;
         let firebaseDataLoaded = false;
+
+        function ensureTeacherStats(teacher) {
+            if (!teacher || typeof teacher !== 'object') {
+                return teacher;
+            }
+
+            if (typeof teacher.totalDuties !== 'number') {
+                teacher.totalDuties = typeof teacher.totalDuties === 'number' ? teacher.totalDuties : 0;
+            }
+            if (typeof teacher.swapCount !== 'number') {
+                teacher.swapCount = typeof teacher.swapCount === 'number' ? teacher.swapCount : 0;
+            }
+
+            teacher.dutyDuties = typeof teacher.dutyDuties === 'number'
+                ? teacher.dutyDuties
+                : (typeof teacher.totalDuties === 'number' ? teacher.totalDuties : 0);
+            teacher.trainingDuties = typeof teacher.trainingDuties === 'number' ? teacher.trainingDuties : 0;
+
+            teacher.dutySwapCount = typeof teacher.dutySwapCount === 'number'
+                ? teacher.dutySwapCount
+                : (typeof teacher.swapCount === 'number' ? teacher.swapCount : 0);
+            teacher.trainingSwapCount = typeof teacher.trainingSwapCount === 'number' ? teacher.trainingSwapCount : 0;
+
+            teacher.lastDutyDate = normalizeDateString(teacher.lastDutyDate || teacher.lastEventDate);
+            teacher.lastTrainingDate = normalizeDateString(teacher.lastTrainingDate);
+            const normalizedLastEvent = normalizeDateString(teacher.lastEventDate);
+            teacher.lastEventDate = latestDateString(teacher.lastDutyDate, teacher.lastTrainingDate) || normalizedLastEvent;
+
+            teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
+            teacher.swapCount = (teacher.dutySwapCount || 0) + (teacher.trainingSwapCount || 0);
+
+            return teacher;
+        }
+
+        function ensureAllTeacherStats() {
+            teachers.forEach(ensureTeacherStats);
+        }
+
+        function getQueueEvents(queueType = QUEUE_TYPES.DUTY) {
+            return queueType === QUEUE_TYPES.TRAINING ? trainingEvents : events;
+        }
+
+        function setQueueEvents(queueType, collection) {
+            if (queueType === QUEUE_TYPES.TRAINING) {
+                trainingEvents = collection;
+            } else {
+                events = collection;
+            }
+        }
+
+        function getQueueView(queueType = QUEUE_TYPES.DUTY) {
+            return queueType === QUEUE_TYPES.TRAINING ? 'training' : 'events';
+        }
+
+        function getQueueDisplayName(queueType = QUEUE_TYPES.DUTY) {
+            return queueType === QUEUE_TYPES.TRAINING ? 'การอบรม' : 'งาน';
+        }
+
+        function safeDate(value) {
+            if (!value) {
+                return null;
+            }
+            const date = new Date(value);
+            return Number.isNaN(date.getTime()) ? null : date;
+        }
+
+        function normalizeDateString(value) {
+            const date = safeDate(value);
+            return date ? date.toISOString().slice(0, 10) : null;
+        }
+
+        function latestDateString(dateA, dateB) {
+            const parsedA = safeDate(dateA);
+            const parsedB = safeDate(dateB);
+
+            if (!parsedA && !parsedB) {
+                return null;
+            }
+            if (!parsedA) {
+                return parsedB.toISOString().slice(0, 10);
+            }
+            if (!parsedB) {
+                return parsedA.toISOString().slice(0, 10);
+            }
+
+            const latest = parsedA > parsedB ? parsedA : parsedB;
+            return latest.toISOString().slice(0, 10);
+        }
+
+        function recomputeTeacherStats() {
+            const teacherMap = new Map();
+
+            teachers.forEach(teacher => {
+                ensureTeacherStats(teacher);
+                teacher.dutyDuties = 0;
+                teacher.trainingDuties = 0;
+                teacher.dutySwapCount = 0;
+                teacher.trainingSwapCount = 0;
+                teacher.totalDuties = 0;
+                teacher.swapCount = 0;
+                teacher.lastDutyDate = null;
+                teacher.lastTrainingDate = null;
+                teacherMap.set(teacher.teacherId, teacher);
+            });
+
+            const updateFromEvent = (event, queueType) => {
+                const slots = getEventAssignmentSlots(event);
+                slots.forEach(slot => {
+                    if (!slot || slot.currentTeacherId === null || slot.currentTeacherId === undefined) {
+                        return;
+                    }
+                    const teacher = teacherMap.get(slot.currentTeacherId);
+                    if (!teacher) {
+                        return;
+                    }
+
+                    const dateValue = normalizeDateString(event.date);
+                    if (queueType === QUEUE_TYPES.TRAINING) {
+                        teacher.trainingDuties = (teacher.trainingDuties || 0) + 1;
+                        teacher.lastTrainingDate = latestDateString(teacher.lastTrainingDate, dateValue);
+                        if (slot.originalTeacherId && slot.originalTeacherId !== slot.currentTeacherId) {
+                            teacher.trainingSwapCount = (teacher.trainingSwapCount || 0) + 1;
+                        }
+                    } else {
+                        teacher.dutyDuties = (teacher.dutyDuties || 0) + 1;
+                        teacher.lastDutyDate = latestDateString(teacher.lastDutyDate, dateValue);
+                        if (slot.originalTeacherId && slot.originalTeacherId !== slot.currentTeacherId) {
+                            teacher.dutySwapCount = (teacher.dutySwapCount || 0) + 1;
+                        }
+                    }
+                });
+            };
+
+            events.forEach(event => updateFromEvent(event, QUEUE_TYPES.DUTY));
+            trainingEvents.forEach(event => updateFromEvent(event, QUEUE_TYPES.TRAINING));
+
+            teachers.forEach(teacher => {
+                teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
+                teacher.swapCount = (teacher.dutySwapCount || 0) + (teacher.trainingSwapCount || 0);
+                const latestOverall = latestDateString(teacher.lastDutyDate, teacher.lastTrainingDate);
+                teacher.lastEventDate = latestOverall || normalizeDateString(teacher.lastEventDate);
+            });
+        }
 
         function normalizeTeacherId(value) {
             if (value === null || value === undefined) {
@@ -865,7 +1078,7 @@
         }
 
         function createDefaultTeachers() {
-            return [
+            const baseTeachers = [
                 { teacherId: 1, name: 'พรรวินท์', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
                 { teacherId: 2, name: 'สอาดวรรณ', position: 'ครูชำนาญการพิเศษ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
                 { teacherId: 3, name: 'สุทัศษา', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
@@ -880,6 +1093,20 @@
                 { teacherId: 12, name: 'อังคณา', position: 'ครูชำนาญการ', totalDuties: 3, queueScore: 45, swapCount: 0, lastEventDate: '2024-08-12' },
                 { teacherId: 13, name: 'ภาณุวัฒน์', position: 'ครู', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2025-04-01' }
             ];
+
+            return baseTeachers.map(teacher => {
+                const enriched = {
+                    ...teacher,
+                    dutyDuties: teacher.totalDuties ?? 0,
+                    trainingDuties: teacher.trainingDuties ?? 0,
+                    dutySwapCount: teacher.swapCount ?? 0,
+                    trainingSwapCount: teacher.trainingSwapCount ?? 0,
+                    lastDutyDate: teacher.lastEventDate || null,
+                    lastTrainingDate: teacher.lastTrainingDate || null
+                };
+                ensureTeacherStats(enriched);
+                return enriched;
+            });
         }
 
         function createDefaultEvents() {
@@ -964,6 +1191,53 @@
             return defaultEvents;
         }
 
+        function createDefaultTrainingEvents() {
+            const defaultTraining = [
+                {
+                    eventId: 101,
+                    eventName: 'อบรมการจัดการชั้นเรียนเชิงบวก',
+                    details: 'หลักสูตรพัฒนาครูเพื่อสร้างบรรยากาศการเรียนรู้ที่สร้างสรรค์และปลอดภัย',
+                    date: '2024-09-05',
+                    startTime: '09:00',
+                    endTime: '12:00',
+                    time: '09:00-12:00',
+                    location: 'ศูนย์พัฒนาวิชาชีพครู จังหวัดชัยนาท',
+                    requiredQuota: 4,
+                    assignedTeachers: [2, 5, 8, 11],
+                    status: 'assigned'
+                },
+                {
+                    eventId: 102,
+                    eventName: 'อบรมภาษาอังกฤษเพื่อการสื่อสารในชั้นเรียน',
+                    details: 'เสริมสร้างทักษะภาษาอังกฤษและเทคนิคการสอนเพื่อรองรับนักเรียนในศตวรรษที่ 21',
+                    date: '2024-11-18',
+                    startTime: '13:00',
+                    endTime: '16:30',
+                    time: '13:00-16:30',
+                    location: 'มหาวิทยาลัยราชภัฏชัยนาท',
+                    requiredQuota: 3,
+                    assignedTeachers: [1, 6, 10],
+                    status: 'assigned'
+                },
+                {
+                    eventId: 103,
+                    eventName: 'โครงการอบรมเทคโนโลยีดิจิทัลเพื่อการเรียนรู้',
+                    details: 'เรียนรู้การใช้สื่อดิจิทัลและแพลตฟอร์มออนไลน์เพื่อยกระดับคุณภาพการสอน',
+                    date: '2025-02-22',
+                    startTime: '08:30',
+                    endTime: '16:00',
+                    time: '08:30-16:00',
+                    location: 'ห้องประชุมใหญ่ โรงเรียนหันคาพิทยาคม',
+                    requiredQuota: 5,
+                    assignedTeachers: [3, 4, 7, 9, 12],
+                    status: 'assigned'
+                }
+            ];
+
+            defaultTraining.forEach(event => ensureEventAssignments(event));
+            return defaultTraining;
+        }
+
         function updateSystemLabels() {
             const titleEl = document.getElementById('systemTitle');
             const schoolEl = document.getElementById('schoolName');
@@ -976,8 +1250,10 @@
         }
 
         function renderAllViews() {
+            recomputeTeacherStats();
             renderDashboard();
             renderEventsTable();
+            renderTrainingView();
             renderTeachersTable();
             renderHistory();
         }
@@ -987,6 +1263,7 @@
                 config: systemConfig,
                 teachers: teachers,
                 events: events,
+                trainingEvents: trainingEvents,
                 activityLog: activityLog
             };
         }
@@ -1012,6 +1289,13 @@
                 tasks.push(firebaseFetch('events', {
                     method: 'PUT',
                     body: JSON.stringify(payload.events)
+                }));
+            }
+
+            if (payload.trainingEvents !== undefined) {
+                tasks.push(firebaseFetch('trainingEvents', {
+                    method: 'PUT',
+                    body: JSON.stringify(payload.trainingEvents)
                 }));
             }
 
@@ -1041,6 +1325,7 @@
                 return;
             }
 
+            recomputeTeacherStats();
             const persistResult = persistAllData();
             if (persistResult && typeof persistResult.then === 'function') {
                 persistResult.catch(error => console.error('การบันทึกข้อมูลล้มเหลว:', error));
@@ -1049,10 +1334,11 @@
         }
 
         async function fetchInitialDataDirect() {
-            const [config, teacherData, eventData, logData] = await Promise.all([
+            const [config, teacherData, eventData, trainingData, logData] = await Promise.all([
                 firebaseFetch('config'),
                 firebaseFetch('teachers'),
                 firebaseFetch('events'),
+                firebaseFetch('trainingEvents'),
                 firebaseFetch('activityLog')
             ]);
 
@@ -1060,6 +1346,7 @@
                 config: config || {},
                 teachers: normalizeFirebaseList(teacherData),
                 events: normalizeFirebaseList(eventData),
+                trainingEvents: normalizeFirebaseList(trainingData),
                 activityLog: normalizeFirebaseList(logData)
             };
         }
@@ -1123,6 +1410,7 @@
                 shouldSeedDefaults = true;
             }
 
+            ensureAllTeacherStats();
             selectedTeacherId = null;
 
             if (Array.isArray(data.events) && data.events.length > 0) {
@@ -1136,6 +1424,21 @@
                 ensureEventAssignments(event);
                 return event;
             });
+
+            if (Array.isArray(data.trainingEvents) && data.trainingEvents.length > 0) {
+                trainingEvents = data.trainingEvents;
+            } else {
+                trainingEvents = createDefaultTrainingEvents();
+                shouldSeedDefaults = true;
+            }
+
+            trainingEvents = (Array.isArray(trainingEvents) ? trainingEvents : []).map(event => {
+                ensureEventAssignments(event);
+                return event;
+            });
+
+            ensureAllTeacherStats();
+            recomputeTeacherStats();
 
             activityLog = Array.isArray(data.activityLog) ? data.activityLog : [];
             systemConfig = { ...defaultConfig, ...(data.config || {}) };
@@ -1247,13 +1550,23 @@
             return teachers.find(t => t.teacherId === id);
         }
 
-        function getEventById(id) {
-            return events.find(e => e.eventId === id);
+        function getEventById(id, queueType = QUEUE_TYPES.DUTY) {
+            const collection = getQueueEvents(queueType);
+            let found = collection.find(e => e.eventId === id);
+            if (!found && queueType === QUEUE_TYPES.DUTY) {
+                // Fallback: search training events if queue type not specified
+                found = trainingEvents.find(e => e.eventId === id) || null;
+            }
+            return found || null;
         }
 
         // ฟังก์ชันสำหรับหาครูที่ควรได้รับงานต่อไป (หลีกเลี่ยงคนที่ออกงานล่าสุด)
         function getNextQueueTeachers(limit = 13) {
             return [...teachers]
+                .map(teacher => {
+                    ensureTeacherStats(teacher);
+                    return teacher;
+                })
                 .sort((a, b) => {
                     if (a.queueScore !== b.queueScore) {
                         return a.queueScore - b.queueScore;
@@ -1289,6 +1602,9 @@
                     break;
                 case 'events':
                     renderEventsTable();
+                    break;
+                case 'training':
+                    renderTrainingView();
                     break;
                 case 'teachers':
                     renderTeachersTable();
@@ -1361,8 +1677,9 @@
                             ${teacher.lastEventDate ? `<p class="text-[10px] text-gray-400 leading-tight">ล่าสุด ${formatDateThai(teacher.lastEventDate)}</p>` : ''}
                         </div>
                         <div class="w-full space-y-1">
-                            <div class="queue-mini-stat is-duty"><span>งาน</span><span class="font-semibold text-gray-700">${teacher.totalDuties}</span></div>
-                            <div class="queue-mini-stat is-sub"><span>แทน</span><span class="font-semibold text-gray-700">${teacher.swapCount || 0}</span></div>
+                            <div class="queue-mini-stat is-duty"><span>งาน</span><span class="font-semibold text-gray-700">${teacher.dutyDuties ?? 0}</span></div>
+                            <div class="queue-mini-stat is-duty"><span>อบรม</span><span class="font-semibold text-gray-700">${teacher.trainingDuties ?? 0}</span></div>
+                            <div class="queue-mini-stat is-sub"><span>แทนรวม</span><span class="font-semibold text-gray-700">${teacher.swapCount || 0}</span></div>
                         </div>
                     </div>
                 `;
@@ -1398,7 +1715,7 @@
                             </div>
                         ` : ''}
                     </div>
-                    <button onclick="openAutoAssignModal(${event.eventId})" class="btn-primary text-sm">
+                    <button onclick="openAutoAssignModal(${event.eventId}, '${QUEUE_TYPES.DUTY}')" class="btn-primary text-sm">
                         จัดคิว
                     </button>
                 </div>
@@ -1422,7 +1739,7 @@
                     </div>
                     <div class="text-right">
                         <div class="queue-score">${teacher.queueScore}</div>
-                        <p class="text-xs text-gray-600 mt-1">${teacher.totalDuties} งาน</p>
+                        <p class="text-xs text-gray-600 mt-1">งาน ${teacher.dutyDuties ?? 0} | อบรม ${teacher.trainingDuties ?? 0}</p>
                     </div>
                 </div>
             `).join('');
@@ -1430,17 +1747,38 @@
             document.getElementById('top-queue-teachers').innerHTML = topTeachersHtml;
         }
 
-        // Events cards rendering
-        function renderEventsTable() {
-            const sortedEvents = [...events].sort((a, b) => new Date(b.date) - new Date(a.date));
-            const eventsHtml = sortedEvents.map(event => {
-                const statusClass = event.status === 'assigned' ? 'status-assigned' :
-                                  event.status === 'completed' ? 'status-completed' : 'status-pending';
-                const statusText = event.status === 'assigned' ? 'จัดคิวแล้ว' :
-                                 event.status === 'completed' ? 'เสร็จสิ้น' : 'รอจัดคิว';
+        function renderQueueCards(queueType, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) {
+                return;
+            }
 
-                const statusIcon = event.status === 'assigned' ? '✅' :
-                                 event.status === 'completed' ? '🎉' : '⏳';
+            const queueEvents = [...getQueueEvents(queueType)].sort((a, b) => new Date(b.date) - new Date(a.date));
+            if (queueEvents.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-6">ยังไม่มีข้อมูลกิจกรรม</p>';
+                return;
+            }
+
+            const queueLabel = getQueueDisplayName(queueType);
+
+            const cardsHtml = queueEvents.map(event => {
+                const statusClass = event.status === 'assigned' ? 'status-assigned'
+                    : event.status === 'completed' ? 'status-completed'
+                    : 'status-pending';
+                const statusText = event.status === 'assigned' ? 'จัดคิวแล้ว'
+                    : event.status === 'completed' ? 'เสร็จสิ้น'
+                    : 'รอจัดคิว';
+                const statusIcon = event.status === 'assigned' ? '✅'
+                    : event.status === 'completed' ? '🎉'
+                    : '⏳';
+
+                const assignmentSlots = getEventAssignmentSlots(event);
+                const currentAssignments = assignmentSlots.filter(slot => slot.currentTeacherId !== null && slot.currentTeacherId !== undefined);
+                const assignedCount = currentAssignments.length;
+
+                const queueBadge = queueType === QUEUE_TYPES.TRAINING
+                    ? '<span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-[#E1B1C1] text-[#5b2d38] mb-2">คิวอบรม</span>'
+                    : '<span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-[#C4E9F8] text-[#245f7a] mb-2">คิวออกงาน</span>';
 
                 const assignmentSlots = getEventAssignmentSlots(event);
                 const currentAssignments = assignmentSlots.filter(slot => slot.currentTeacherId !== null && slot.currentTeacherId !== undefined);
@@ -1450,6 +1788,7 @@
                     <div class="card p-6 hover:shadow-lg transition-all duration-300">
                         <div class="flex justify-between items-start mb-4">
                             <div class="flex-1">
+                                ${queueBadge}
                                 <h3 class="font-semibold text-gray-800 text-lg mb-2">${event.eventName}</h3>
                                 <div class="space-y-1 text-sm text-gray-600">
                                     <p class="flex items-center">
@@ -1503,14 +1842,14 @@
                         `}
 
                         <div class="flex space-x-2">
-                            <button onclick="editEvent(${event.eventId})" class="btn-primary text-sm flex-1">
+                            <button onclick="editEvent(${event.eventId}, '${queueType}')" class="btn-primary text-sm flex-1">
                                 <span class="mr-1">✏️</span>แก้ไข
                             </button>
-                            ${event.status === 'pending' ? 
-                                `<button onclick="openAutoAssignModal(${event.eventId})" class="btn-success text-sm flex-1">
+                            ${event.status === 'pending'
+                                ? `<button onclick="openAutoAssignModal(${event.eventId}, '${queueType}')" class="btn-success text-sm flex-1">
                                     <span class="mr-1">🎯</span>จัดคิว
-                                </button>` : 
-                                `<button onclick="openSubstitutionModal(${event.eventId})" class="btn-danger text-sm flex-1">
+                                </button>`
+                                : `<button onclick="openSubstitutionModal(${event.eventId}, '${queueType}')" class="btn-danger text-sm flex-1">
                                     <span class="mr-1">🔄</span>แทน
                                 </button>`
                             }
@@ -1519,7 +1858,103 @@
                 `;
             }).join('');
 
-            document.getElementById('events-cards').innerHTML = eventsHtml;
+            container.innerHTML = cardsHtml;
+        }
+
+        function renderEventsTable() {
+            renderQueueCards(QUEUE_TYPES.DUTY, 'events-cards');
+        }
+
+        function renderTrainingView() {
+            const trainings = getQueueEvents(QUEUE_TYPES.TRAINING);
+            const totalTrainingsEl = document.getElementById('total-training-events');
+            const assignedTrainingsEl = document.getElementById('assigned-training-events');
+            const pendingTrainingsEl = document.getElementById('pending-training-events');
+            const upcomingContainer = document.getElementById('upcoming-training-events');
+            const recentContainer = document.getElementById('recent-training-teachers');
+
+            if (totalTrainingsEl) {
+                totalTrainingsEl.textContent = trainings.length;
+            }
+            if (assignedTrainingsEl) {
+                assignedTrainingsEl.textContent = trainings.filter(event => event.status === 'assigned').length;
+            }
+            if (pendingTrainingsEl) {
+                pendingTrainingsEl.textContent = trainings.filter(event => event.status === 'pending').length;
+            }
+
+            if (upcomingContainer) {
+                const upcoming = trainings
+                    .filter(event => event.status !== 'completed')
+                    .sort((a, b) => new Date(a.date) - new Date(b.date))
+                    .slice(0, 5);
+
+                upcomingContainer.innerHTML = upcoming.length > 0
+                    ? upcoming.map(event => {
+                        const slots = getEventAssignmentSlots(event);
+                        const assignedCount = slots.filter(slot => slot.currentTeacherId !== null && slot.currentTeacherId !== undefined).length;
+                        const callToAction = event.status === 'pending'
+                            ? `<button onclick="openAutoAssignModal(${event.eventId}, '${QUEUE_TYPES.TRAINING}')" class="btn-primary text-sm">จัดคิว</button>`
+                            : `<button onclick="openSubstitutionModal(${event.eventId}, '${QUEUE_TYPES.TRAINING}')" class="btn-danger text-sm">แทน</button>`;
+
+                        return `
+                            <div class="flex justify-between items-center p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                <div class="flex-1">
+                                    <p class="font-medium text-gray-800">${event.eventName}</p>
+                                    <p class="text-sm text-gray-600">${formatDateThai(event.date)} • ${event.time}</p>
+                                    <p class="text-sm text-gray-600">📍 ${event.location}</p>
+                                    <p class="text-xs text-gray-500 mt-1">มีผู้ร่วมแล้ว ${assignedCount}/${event.requiredQuota} คน</p>
+                                </div>
+                                ${callToAction}
+                            </div>
+                        `;
+                    }).join('')
+                    : '<p class="text-gray-500 text-center py-4">ยังไม่มีการอบรมที่ต้องจัดคิว</p>';
+            }
+
+            if (recentContainer) {
+                const seen = new Set();
+                const recentAssignments = [];
+
+                [...trainings]
+                    .sort((a, b) => new Date(b.date) - new Date(a.date))
+                    .forEach(event => {
+                        getEventAssignmentSlots(event).forEach(slot => {
+                            const teacher = slot.currentTeacherId ? getTeacherById(slot.currentTeacherId) : null;
+                            if (!teacher || seen.has(teacher.teacherId)) {
+                                return;
+                            }
+                            seen.add(teacher.teacherId);
+                            ensureTeacherStats(teacher);
+                            recentAssignments.push({ event, teacher });
+                        });
+                    });
+
+                recentContainer.innerHTML = recentAssignments.length > 0
+                    ? recentAssignments.slice(0, 5).map(({ event, teacher }) => {
+                        const lastTrainingDate = teacher.lastTrainingDate ? formatDateThai(teacher.lastTrainingDate) : formatDateThai(event.date);
+                        return `
+                            <div class="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
+                                <div class="flex items-center">
+                                    ${createTeacherAvatar(teacher)}
+                                    <div class="ml-3">
+                                        <p class="font-medium text-gray-800">${teacher.name}</p>
+                                        <p class="text-xs text-gray-500">คะแนนคิว ${teacher.queueScore}</p>
+                                        <p class="text-xs text-gray-500">อบรมล่าสุด ${lastTrainingDate}</p>
+                                    </div>
+                                </div>
+                                <span class="text-xs text-gray-500 text-right">${event.eventName}</span>
+                            </div>
+                        `;
+                    }).join('')
+                    : '<p class="text-gray-500 text-center py-4">ยังไม่มีข้อมูลการอบรมล่าสุด</p>';
+            }
+
+            renderQueueCards(QUEUE_TYPES.TRAINING, 'training-events-cards');
+        }
+
+        function showTrainingQueueGuide() {
+            alert('คู่มือย่อ:\n• ใช้ปุ่ม “เพิ่มการอบรม” เพื่อบันทึกคิวอบรมใหม่\n• ปุ่ม “จัดคิว” จะสุ่มเสนอครูจากคะแนนคิวต่ำสุดเช่นเดียวกับงานปกติ\n• ปุ่ม “แทน” ใช้เปลี่ยนครูอบรมและระบบจะนับสถิติให้โดยอัตโนมัติ');
         }
 
         // Teachers table rendering
@@ -1530,6 +1965,10 @@
             }
 
             const sortedTeachers = [...teachers]
+                .map(teacher => {
+                    ensureTeacherStats(teacher);
+                    return teacher;
+                })
                 .sort((a, b) => {
                     if (a.queueScore !== b.queueScore) {
                         return a.queueScore - b.queueScore;
@@ -1541,7 +1980,7 @@
                 .map((teacher, index) => ({ ...teacher, queueRank: index + 1 }));
 
             if (sortedTeachers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-500">ยังไม่มีข้อมูลครู</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-gray-500">ยังไม่มีข้อมูลครู</td></tr>';
                 renderTeacherDetail(null);
                 return;
             }
@@ -1566,7 +2005,8 @@
                         </td>
                         <td class="text-sm text-gray-600">${teacher.position}</td>
                         <td class="font-semibold text-[#5b2d38]">${teacher.queueScore}</td>
-                        <td class="text-center">${teacher.totalDuties}</td>
+                        <td class="text-center">${teacher.dutyDuties ?? 0}</td>
+                        <td class="text-center">${teacher.trainingDuties ?? 0}</td>
                         <td class="text-center">${teacher.swapCount ?? 0}</td>
                     </tr>
                 `;
@@ -1592,7 +2032,12 @@
                 return;
             }
 
+            ensureTeacherStats(teacher);
             const relatedEvents = events
+                .filter(event => Array.isArray(event.assignedTeachers) && event.assignedTeachers.includes(teacher.teacherId))
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const relatedTrainingEvents = trainingEvents
                 .filter(event => Array.isArray(event.assignedTeachers) && event.assignedTeachers.includes(teacher.teacherId))
                 .sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -1604,6 +2049,18 @@
                         <p class="text-xs text-gray-500">${formatDateThai(event.date)} • ${event.time}</p>
                         <p class="text-xs text-gray-500">สถานที่: ${event.location}</p>
                         <span class="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-full" style="background: rgba(137, 77, 91, 0.12); color: #5b2d38;">${statusLabel}</span>
+                    </li>
+                `;
+            }).join('');
+
+            const highlightTraining = relatedTrainingEvents.slice(0, 3).map(event => {
+                const statusLabel = event.status === 'assigned' ? 'จัดคิวแล้ว' : event.status === 'completed' ? 'เสร็จสิ้น' : 'รอจัดคิว';
+                return `
+                    <li class="p-3 rounded-lg border border-blue-200 bg-blue-50">
+                        <p class="font-medium text-gray-800">${event.eventName}</p>
+                        <p class="text-xs text-gray-500">${formatDateThai(event.date)} • ${event.time}</p>
+                        <p class="text-xs text-gray-500">สถานที่: ${event.location}</p>
+                        <span class="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-full" style="background: rgba(196, 233, 248, 0.6); color: #245f7a;">${statusLabel}</span>
                     </li>
                 `;
             }).join('');
@@ -1621,13 +2078,21 @@
                 </div>
                 <div class="teacher-detail-card mt-4">
                     <div class="detail-row"><span>ลำดับคิวปัจจุบัน</span><span>${teacher.queueRank ?? '-'}</span></div>
-                    <div class="detail-row"><span>ออกงานทั้งหมด</span><span>${teacher.totalDuties} ครั้ง</span></div>
-                    <div class="detail-row"><span>แทนเพื่อนร่วมงาน</span><span>${teacher.swapCount ?? 0} ครั้ง</span></div>
-                    <div class="detail-row"><span>ออกงานล่าสุด</span><span>${teacher.lastEventDate ? formatDateThai(teacher.lastEventDate) : '-'}</span></div>
+                    <div class="detail-row"><span>ออกงานทั้งหมด</span><span>${teacher.dutyDuties ?? 0} ครั้ง</span></div>
+                    <div class="detail-row"><span>อบรมทั้งหมด</span><span>${teacher.trainingDuties ?? 0} ครั้ง</span></div>
+                    <div class="detail-row"><span>แทนงาน</span><span>${teacher.dutySwapCount ?? 0} ครั้ง</span></div>
+                    <div class="detail-row"><span>แทนอบรม</span><span>${teacher.trainingSwapCount ?? 0} ครั้ง</span></div>
+                    <div class="detail-row"><span>รวมการแทน</span><span>${teacher.swapCount ?? 0} ครั้ง</span></div>
+                    <div class="detail-row"><span>ออกงานล่าสุด</span><span>${teacher.lastDutyDate ? formatDateThai(teacher.lastDutyDate) : '-'}</span></div>
+                    <div class="detail-row"><span>อบรมล่าสุด</span><span>${teacher.lastTrainingDate ? formatDateThai(teacher.lastTrainingDate) : '-'}</span></div>
                 </div>
                 <div class="mt-4">
                     <h4 class="font-semibold text-gray-800">งานที่เกี่ยวข้องล่าสุด</h4>
                     ${relatedEvents.length > 0 ? `<ul class="mt-2 space-y-2">${highlightEvents}</ul>` : '<p class="text-sm text-gray-500 mt-2">ยังไม่มีประวัติงาน</p>'}
+                </div>
+                <div class="mt-4">
+                    <h4 class="font-semibold text-gray-800">การอบรมที่เกี่ยวข้องล่าสุด</h4>
+                    ${relatedTrainingEvents.length > 0 ? `<ul class="mt-2 space-y-2">${highlightTraining}</ul>` : '<p class="text-sm text-gray-500 mt-2">ยังไม่มีประวัติการอบรม</p>'}
                 </div>
                 <div class="flex gap-3 mt-6">
                     <button class="btn-primary flex-1" onclick="editTeacher(${teacher.teacherId})">
@@ -1643,27 +2108,27 @@
         // History rendering
         function renderHistory() {
             // Duty distribution
-            const sortedTeachers = [...teachers].sort((a, b) => a.totalDuties - b.totalDuties);
+            const sortedTeachers = [...teachers].map(ensureTeacherStats).sort((a, b) => (a.totalDuties || 0) - (b.totalDuties || 0));
             const dutyDistributionHtml = sortedTeachers.map(teacher => `
                 <div class="flex justify-between items-center py-2 border-b border-gray-200">
                     <div class="flex items-center">
                         ${createTeacherAvatar(teacher)}
                         <span class="font-medium ml-3">${teacher.name}</span>
                     </div>
-                    <span class="text-gray-600">${teacher.totalDuties} งาน</span>
+                    <span class="text-gray-600">${teacher.dutyDuties ?? 0} งาน | ${teacher.trainingDuties ?? 0} อบรม</span>
                 </div>
             `).join('');
             document.getElementById('duty-distribution').innerHTML = dutyDistributionHtml;
 
             // Substitution stats
-            const substitutionStats = teachers.filter(t => t.swapCount > 0);
+            const substitutionStats = teachers.map(ensureTeacherStats).filter(t => (t.swapCount || 0) > 0);
             const substitutionStatsHtml = substitutionStats.length > 0 ? substitutionStats.map(teacher => `
                 <div class="flex justify-between items-center py-2 border-b border-gray-200">
                     <div class="flex items-center">
                         ${createTeacherAvatar(teacher)}
                         <span class="font-medium ml-3">${teacher.name}</span>
                     </div>
-                    <span class="font-semibold" style="color: var(--secondary-bg);">${teacher.swapCount} ครั้ง</span>
+                    <span class="font-semibold" style="color: var(--secondary-bg);">${teacher.swapCount} ครั้ง (งาน ${teacher.dutySwapCount ?? 0} | อบรม ${teacher.trainingSwapCount ?? 0})</span>
                 </div>
             `).join('') : '<p class="text-gray-500 text-center py-4">ยังไม่มีการแทน</p>';
             document.getElementById('substitution-stats').innerHTML = substitutionStatsHtml;
@@ -1747,31 +2212,41 @@
             }).join('');
         }
 
-        function openEventModal(eventId = null) {
+        function openEventModal(eventId = null, queueType = QUEUE_TYPES.DUTY) {
             currentEventId = eventId;
+            currentEventQueueType = queueType || QUEUE_TYPES.DUTY;
+
             const modal = document.getElementById('event-modal');
             const title = document.getElementById('event-modal-title');
             const form = document.getElementById('event-form');
-            const latInput = document.getElementById('event-location-lat');
-            const lngInput = document.getElementById('event-location-lng');
-
-            let targetEvent = null;
+            const queueLabel = getQueueDisplayName(currentEventQueueType);
 
             if (eventId) {
-                const event = getEventById(eventId);
-                targetEvent = event;
-                title.textContent = 'แก้ไขงาน';
-                document.getElementById('event-name').value = event.eventName;
+                const event = getEventById(eventId, currentEventQueueType);
+                if (!event) {
+                    console.error('ไม่พบข้อมูลงานสำหรับคิว', currentEventQueueType, 'รหัส', eventId);
+                    return;
+                }
+                title.textContent = `แก้ไข${queueLabel}`;
+                document.getElementById('event-name').value = event.eventName || '';
                 document.getElementById('event-details').value = event.details || '';
-                document.getElementById('event-date').value = event.date;
+                document.getElementById('event-date').value = event.date || '';
                 document.getElementById('event-start-time').value = event.startTime || '';
                 document.getElementById('event-end-time').value = event.endTime || '';
-                document.getElementById('event-location').value = event.location;
-                document.getElementById('event-quota').value = event.requiredQuota;
+                document.getElementById('event-location').value = event.location || '';
+                document.getElementById('event-quota').value = event.requiredQuota || 0;
+                const latInput = document.getElementById('event-location-lat');
+                const lngInput = document.getElementById('event-location-lng');
+                if (latInput) latInput.value = event.locationLat ?? '';
+                if (lngInput) lngInput.value = event.locationLng ?? '';
                 renderEventAssignmentSummary(event);
             } else {
-                title.textContent = 'เพิ่มงานใหม่';
+                title.textContent = `เพิ่ม${queueLabel}ใหม่`;
                 form.reset();
+                const latInput = document.getElementById('event-location-lat');
+                const lngInput = document.getElementById('event-location-lng');
+                if (latInput) latInput.value = '';
+                if (lngInput) lngInput.value = '';
                 renderEventAssignmentSummary(null);
             }
 
@@ -1812,18 +2287,19 @@
             currentTeacherId = null;
         }
 
-        function openAutoAssignModal(eventId) {
-            const event = getEventById(eventId);
+        function openAutoAssignModal(eventId, queueType = QUEUE_TYPES.DUTY) {
+            currentEventQueueType = queueType || QUEUE_TYPES.DUTY;
+            const event = getEventById(eventId, currentEventQueueType);
             if (!event || event.status !== 'pending') return;
 
-            // Get teachers sorted by queue score (lowest first - ระบบใหม่)
+            // Get teachers sorted by queue score (lowest first)
             const sortedTeachers = [...teachers].sort((a, b) => a.queueScore - b.queueScore);
             const suggestedTeachers = sortedTeachers.slice(0, event.requiredQuota);
 
             const content = document.getElementById('auto-assign-content');
             content.innerHTML = `
                 <div class="mb-4">
-                    <h4 class="font-semibold text-gray-800 mb-2">งาน: ${event.eventName}</h4>
+                    <h4 class="font-semibold text-gray-800 mb-2">${getQueueDisplayName(currentEventQueueType)}: ${event.eventName}</h4>
                     <p class="text-sm text-gray-600">วันที่: ${formatDateThai(event.date)} เวลา: ${event.time}</p>
                     <p class="text-sm text-gray-600">ต้องการครู: ${event.requiredQuota} คน</p>
                 </div>
@@ -1838,20 +2314,20 @@
                                 <div class="teacher-select-card p-3 border-2 rounded-lg cursor-pointer transition-all duration-200 ${isSelected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white hover:border-blue-300'}" 
                                      data-teacher-id="${teacher.teacherId}" 
                                      onclick="toggleTeacherSelection(${teacher.teacherId}, ${event.requiredQuota})">
-                                    <div class="flex flex-col items-center text-center">
-                                        ${createTeacherAvatar(teacher)}
-                                        <div class="mt-2">
-                                            <p class="font-medium text-sm">${teacher.name}</p>
-                                            <p class="text-xs text-gray-600">${teacher.position}</p>
-                                            <div class="flex items-center justify-center mt-1">
-                                                <span class="queue-score text-xs">${teacher.queueScore}</span>
-                                                ${isRecommended ? '<span class="ml-1 text-xs">⭐</span>' : ''}
-                                            </div>
-                                            <p class="text-xs text-gray-500">${teacher.totalDuties} งาน</p>
-                                        </div>
-                                        <div class="selection-indicator mt-2 w-4 h-4 rounded-full border-2 ${isSelected ? 'bg-green-500 border-green-500' : 'border-gray-300'}">
-                                            ${isSelected ? '<span class="text-white text-xs">✓</span>' : ''}
-                                        </div>
+                                            <div class="flex flex-col items-center text-center">
+                                                ${createTeacherAvatar(teacher)}
+                                                <div class="mt-2">
+                                                    <p class="font-medium text-sm">${teacher.name}</p>
+                                                    <p class="text-xs text-gray-600">${teacher.position}</p>
+                                                    <div class="flex items-center justify-center mt-1">
+                                                        <span class="queue-score text-xs">${teacher.queueScore}</span>
+                                                        ${isRecommended ? '<span class="ml-1 text-xs">⭐</span>' : ''}
+                                                    </div>
+                                                    <p class="text-xs text-gray-500">งาน ${teacher.dutyDuties ?? 0} | อบรม ${teacher.trainingDuties ?? 0}</p>
+                                                </div>
+                                                <div class="selection-indicator mt-2 w-4 h-4 rounded-full border-2 ${isSelected ? 'bg-green-500 border-green-500' : 'border-gray-300'}">
+                                                    ${isSelected ? '<span class="text-white text-xs">✓</span>' : ''}
+                                                </div>
                                     </div>
                                 </div>
                             `;
@@ -1867,7 +2343,7 @@
             // Initialize selection count
             updateSelectedCount(event.requiredQuota);
 
-            document.getElementById('confirm-auto-assign').onclick = () => confirmAutoAssignFromSelection(eventId);
+            document.getElementById('confirm-auto-assign').onclick = () => confirmAutoAssignFromSelection(eventId, currentEventQueueType);
             document.getElementById('auto-assign-modal').classList.add('show');
         }
 
@@ -1911,29 +2387,29 @@
             }
         }
 
-        function confirmAutoAssignFromSelection(eventId) {
+        function confirmAutoAssignFromSelection(eventId, queueType = currentEventQueueType) {
             const selectedCards = document.querySelectorAll('.teacher-select-card.border-green-500');
-            const selectedTeacherIds = Array.from(selectedCards).map(card => 
+            const selectedTeacherIds = Array.from(selectedCards).map(card =>
                 parseInt(card.getAttribute('data-teacher-id'))
             );
-            
-            const event = getEventById(eventId);
-            
+
+            const event = getEventById(eventId, queueType);
+
             if (selectedTeacherIds.length !== event.requiredQuota) {
                 alert(`กรุณาเลือกครูให้ครบ ${event.requiredQuota} คน (เลือกแล้ว ${selectedTeacherIds.length} คน)`);
                 return;
             }
-            
+
             const selectedTeachers = selectedTeacherIds.map(id => getTeacherById(id));
-            confirmAutoAssign(eventId, selectedTeachers);
+            confirmAutoAssign(eventId, selectedTeachers, queueType);
         }
 
         function closeAutoAssignModal() {
             document.getElementById('auto-assign-modal').classList.remove('show');
         }
 
-        function confirmAutoAssign(eventId, selectedTeachers) {
-            const event = getEventById(eventId);
+        function confirmAutoAssign(eventId, selectedTeachers, queueType = currentEventQueueType) {
+            const event = getEventById(eventId, queueType);
             const teacherIds = selectedTeachers.map(t => t.teacherId);
 
             // Update event
@@ -1944,26 +2420,35 @@
 
             // Update teacher stats - ระบบใหม่: เพิ่มคะแนนเมื่อออกงาน
             selectedTeachers.forEach(teacher => {
-                teacher.totalDuties++;
+                ensureTeacherStats(teacher);
+                if (queueType === QUEUE_TYPES.TRAINING) {
+                    teacher.trainingDuties = (teacher.trainingDuties || 0) + 1;
+                    teacher.lastTrainingDate = normalizeDateString(event.date);
+                } else {
+                    teacher.dutyDuties = (teacher.dutyDuties || 0) + 1;
+                    teacher.lastDutyDate = normalizeDateString(event.date);
+                }
+                teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
                 teacher.queueScore += 15; // เพิ่มคะแนน 15 เมื่อออกงาน
-                teacher.lastEventDate = event.date;
+                teacher.lastEventDate = normalizeDateString(event.date);
             });
-            
+
             // Add activity log
             const teacherNames = selectedTeachers.map(t => t.name).join(', ');
             addActivityLog(
                 'auto-assign',
-                `จัดคิวอัตโนมัติสำหรับงาน "${event.eventName}"`,
+                `จัดคิวอัตโนมัติสำหรับ${getQueueDisplayName(queueType)} "${event.eventName}"`,
                 `ครูที่ได้รับมอบหมาย: ${teacherNames}`
             );
-            
+
             saveData();
             closeAutoAssignModal();
-            showView('events'); // Refresh events view
+            showView(getQueueView(queueType));
         }
 
-        function openSubstitutionModal(eventId) {
-            const event = getEventById(eventId);
+        function openSubstitutionModal(eventId, queueType = QUEUE_TYPES.DUTY) {
+            currentEventQueueType = queueType || QUEUE_TYPES.DUTY;
+            const event = getEventById(eventId, currentEventQueueType);
             const slots = event ? getEventAssignmentSlots(event) : [];
             const currentAssignments = slots.filter(slot => slot.currentTeacherId !== null && slot.currentTeacherId !== undefined);
 
@@ -1977,7 +2462,7 @@
 
             const currentTeachersHtml = `
                 <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <h5 class="font-medium text-gray-800 mb-2">ครูที่ได้รับมอบหมายในงานนี้:</h5>
+                    <h5 class="font-medium text-gray-800 mb-2">ครูที่ได้รับมอบหมายใน${getQueueDisplayName(currentEventQueueType)}นี้:</h5>
                     <div class="space-y-2">
                         ${slots.map((slot, index) => {
                             if (slot.currentTeacherId === null || slot.currentTeacherId === undefined) {
@@ -2042,8 +2527,8 @@
             currentEventId = null;
         }
 
-        function editEvent(eventId) {
-            openEventModal(eventId);
+        function editEvent(eventId, queueType = QUEUE_TYPES.DUTY) {
+            openEventModal(eventId, queueType);
         }
 
         function editTeacher(teacherId) {
@@ -2107,37 +2592,40 @@
                     requiredQuota: parseInt(safeValue('event-quota')) || 0
                 };
 
+                const queueType = currentEventQueueType || QUEUE_TYPES.DUTY;
+                const targetCollection = getQueueEvents(queueType);
+
                 if (currentEventId) {
-                    const event = getEventById(currentEventId);
+                    const event = getEventById(currentEventId, queueType);
                     Object.assign(event, eventData);
                     ensureEventAssignments(event);
 
                     addActivityLog(
                         'manual-edit',
-                        `แก้ไขข้อมูลงาน "${eventData.eventName}"`,
+                        `แก้ไขข้อมูล${getQueueDisplayName(queueType)} "${eventData.eventName}"`,
                         `วันที่: ${formatDateThai(eventData.date)} | เวลา: ${eventData.time} | สถานที่: ${eventData.location} | โควตาครู: ${eventData.requiredQuota} คน`
                     );
                 } else {
                     const newEvent = {
-                        eventId: Math.max(...events.map(e => e.eventId), 0) + 1,
+                        eventId: Math.max(...targetCollection.map(e => e.eventId), 0) + 1,
                         ...eventData,
                         assignedTeachers: [],
                         assignmentSlots: [],
                         status: 'pending'
                     };
                     ensureEventAssignments(newEvent);
-                    events.push(newEvent);
+                    targetCollection.push(newEvent);
 
                     addActivityLog(
                         'manual-edit',
-                        `เพิ่มงานใหม่ "${eventData.eventName}"`,
+                        `เพิ่ม${getQueueDisplayName(queueType)}ใหม่ "${eventData.eventName}"`,
                         `วันที่: ${formatDateThai(eventData.date)} | เวลา: ${eventData.time} | สถานที่: ${eventData.location} | โควตาครู: ${eventData.requiredQuota} คน`
                     );
                 }
 
                 saveData();
                 closeEventModal();
-                showView('events');
+                showView(getQueueView(queueType));
             } catch (err) {
                 console.error('Event form submit failed:', err);
                 alert('บันทึกงานไม่สำเร็จ: ' + (err?.message || err));
@@ -2159,6 +2647,7 @@
                 if (currentTeacherId) {
                     const teacher = getTeacherById(currentTeacherId);
                     Object.assign(teacher, teacherData);
+                    ensureTeacherStats(teacher);
 
                     addActivityLog(
                         'manual-edit',
@@ -2170,8 +2659,15 @@
                         teacherId: Math.max(...teachers.map(t => t.teacherId), 0) + 1,
                         ...teacherData,
                         totalDuties: 0,
-                        swapCount: 0
+                        swapCount: 0,
+                        dutyDuties: 0,
+                        trainingDuties: 0,
+                        dutySwapCount: 0,
+                        trainingSwapCount: 0,
+                        lastDutyDate: null,
+                        lastTrainingDate: null
                     };
+                    ensureTeacherStats(newTeacher);
                     teachers.push(newTeacher);
 
                     addActivityLog(
@@ -2202,7 +2698,7 @@
                 return;
             }
 
-            const event = getEventById(currentEventId);
+            const event = getEventById(currentEventId, currentEventQueueType);
             const slots = getEventAssignmentSlots(event);
             const slot = slots.find(s => s.currentTeacherId === originalTeacherId) ||
                 slots.find(s => s.originalTeacherId === originalTeacherId);
@@ -2233,20 +2729,30 @@
             ensureEventAssignments(event);
 
             // Update teacher stats - ระบบใหม่: เพิ่มคะแนนเมื่อมีการแทน
-            substituteTeacher.totalDuties++;
-            substituteTeacher.swapCount++;
+            ensureTeacherStats(substituteTeacher);
+            if (currentEventQueueType === QUEUE_TYPES.TRAINING) {
+                substituteTeacher.trainingDuties = (substituteTeacher.trainingDuties || 0) + 1;
+                substituteTeacher.trainingSwapCount = (substituteTeacher.trainingSwapCount || 0) + 1;
+                substituteTeacher.lastTrainingDate = normalizeDateString(event.date);
+            } else {
+                substituteTeacher.dutyDuties = (substituteTeacher.dutyDuties || 0) + 1;
+                substituteTeacher.dutySwapCount = (substituteTeacher.dutySwapCount || 0) + 1;
+                substituteTeacher.lastDutyDate = normalizeDateString(event.date);
+            }
+            substituteTeacher.totalDuties = (substituteTeacher.dutyDuties || 0) + (substituteTeacher.trainingDuties || 0);
+            substituteTeacher.swapCount = (substituteTeacher.dutySwapCount || 0) + (substituteTeacher.trainingSwapCount || 0);
             substituteTeacher.queueScore += 25; // เพิ่มคะแนน 25 เมื่อแทนเพื่อนร่วมงาน
-            substituteTeacher.lastEventDate = event.date;
+            substituteTeacher.lastEventDate = normalizeDateString(event.date);
 
             addActivityLog(
                 'substitution',
-                `แทนบุคลากรในงาน "${event.eventName}"`,
+                `แทนบุคลากรใน${getQueueDisplayName(currentEventQueueType)} "${event.eventName}"`,
                 `คิวเดิม: ${queueTeacher ? queueTeacher.name : 'ไม่ระบุ'} | ผู้มอบหมายล่าสุด: ${currentAssignedTeacher ? currentAssignedTeacher.name : 'ไม่พบข้อมูล'} | ผู้ปฏิบัติจริง: ${substituteTeacher ? substituteTeacher.name : 'ไม่พบข้อมูล'} | เหตุผล: ${reason}`
             );
 
             saveData();
             closeSubstitutionModal();
-            showView('events');
+            showView(getQueueView(currentEventQueueType));
         });
 
         // Navigation event listeners
@@ -2397,6 +2903,10 @@
             const snap = await getDocs(query(collection(db, "events"), orderBy("eventId", "asc")));
             return snap.docs.map((d) => d.data());
           }
+          if (key === "trainingEvents") {
+            const snap = await getDocs(query(collection(db, "trainingEvents"), orderBy("eventId", "asc")));
+            return snap.docs.map((d) => d.data());
+          }
           if (key === "activityLog") {
             const snap = await getDocs(query(collection(db, "activityLog"), orderBy("timestamp", "desc")));
             return snap.docs.map((d) => d.data());
@@ -2421,7 +2931,7 @@
           return value;
         }
 
-        if (seg.length === 1 && ["teachers", "events", "activityLog"].includes(seg[0])) {
+        if (seg.length === 1 && ["teachers", "events", "trainingEvents", "activityLog"].includes(seg[0])) {
           const col = seg[0];
           const batch = writeBatch(db);
 
@@ -2433,6 +2943,7 @@
             const id =
               col === "teachers" ? String(row.teacherId) :
               col === "events" ? String(row.eventId) :
+              col === "trainingEvents" ? String(row.eventId) :
               String(row.id ?? Date.now());
             batch.set(doc(db, col, id), row ?? {}, { merge: false });
           }
@@ -2460,7 +2971,7 @@
           return value;
         }
 
-        if (seg.length === 1 && ["teachers", "events", "activityLog"].includes(seg[0])) {
+        if (seg.length === 1 && ["teachers", "events", "trainingEvents", "activityLog"].includes(seg[0])) {
           const col = seg[0];
           const arr = Array.isArray(value) ? value : [];
           const batch = writeBatch(db);
@@ -2468,6 +2979,7 @@
             const id =
               col === "teachers" ? String(row.teacherId) :
               col === "events" ? String(row.eventId) :
+              col === "trainingEvents" ? String(row.eventId) :
               String(row.id ?? Date.now());
             batch.set(doc(db, col, id), row ?? {}, { merge: true });
           }
