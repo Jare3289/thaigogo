@@ -1,5 +1,18 @@
-function getTeachers() {
-  const url = 'https://<project-id>.firebaseio.com/teachers.json?auth=' + ScriptProperties.getProperty('FIREBASE_DB_SECRET');
-  const res = UrlFetchApp.fetch(url, { method: 'get', muteHttpExceptions: true });
-  return JSON.parse(res.getContentText());
+// =========================
+// File: Code.gs  (Apps Script)
+// =========================
+const APP_TITLE = 'ระบบบริหารข้อมูลนักเรียน';
+
+function doGet(e) {
+  return HtmlService.createHtmlOutputFromFile('index')
+    .setTitle(APP_TITLE)
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+function ping() {
+  return { ok: true, time: new Date().toISOString() };
 }
