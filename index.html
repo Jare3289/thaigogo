@@ -128,6 +128,27 @@
             background: #d9a6b7;
             color: var(--secondary-bg);
         }
+
+        .queue-reset-button {
+            padding: 0.35rem 0.9rem;
+            border-radius: 9999px;
+            border: 1px solid rgba(137, 77, 91, 0.35);
+            background: rgba(255, 255, 255, 0.9);
+            color: #894D5B;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .queue-reset-button:hover {
+            background: rgba(137, 77, 91, 0.08);
+            border-color: rgba(137, 77, 91, 0.55);
+            color: #5b2d38;
+        }
         
         .btn-success {
             background: var(--success-color);
@@ -860,6 +881,15 @@
     <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
    </div>
   </div>
+  <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
+   <div class="text-center">
+    <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
+   </div>
+  </div>
   <script>
         // Firebase initialization bridge (shared with module loader)
         window.firebaseAppConfig = window.firebaseAppConfig || {
@@ -977,7 +1007,7 @@
                 return t;
             }
 
-            const fallbackScore = typeof t.queueScore === 'number' ? t.queueScore : 0;
+            const fallbackScore = Number.isFinite(Number(t.queueScore)) ? Number(t.queueScore) : 0;
 
             if (typeof t.totalDuties !== 'number') {
                 t.totalDuties = 0;
@@ -997,12 +1027,26 @@
             if (typeof t.trainingSwapCount !== 'number') {
                 t.trainingSwapCount = 0;
             }
-            if (typeof t.dutyQueueScore !== 'number') {
-                t.dutyQueueScore = fallbackScore;
+            let normalizedDutyScore = Number.isFinite(Number(t.dutyQueueScore)) ? Number(t.dutyQueueScore) : fallbackScore;
+            if (!Number.isFinite(normalizedDutyScore)) {
+                normalizedDutyScore = 0;
             }
-            if (typeof t.trainingQueueScore !== 'number') {
-                t.trainingQueueScore = 0;
+            let normalizedTrainingScore = Number.isFinite(Number(t.trainingQueueScore)) ? Number(t.trainingQueueScore) : 0;
+            if (!Number.isFinite(normalizedTrainingScore)) {
+                normalizedTrainingScore = 0;
             }
+            if (!Number.isFinite(Number(t.initialDutyQueueScore))) {
+                t.initialDutyQueueScore = normalizedDutyScore;
+            } else {
+                t.initialDutyQueueScore = Number(t.initialDutyQueueScore);
+            }
+            if (!Number.isFinite(Number(t.initialTrainingQueueScore))) {
+                t.initialTrainingQueueScore = normalizedTrainingScore;
+            } else {
+                t.initialTrainingQueueScore = Number(t.initialTrainingQueueScore);
+            }
+            t.dutyQueueScore = normalizedDutyScore;
+            t.trainingQueueScore = normalizedTrainingScore;
             t.queueScore = t.dutyQueueScore;
             t.lastEventDate = t.lastEventDate ? normalizeDateString(t.lastEventDate) : null;
             t.lastDutyDate = t.lastDutyDate ? normalizeDateString(t.lastDutyDate) : null;
@@ -1435,6 +1479,8 @@
                     ...teacher,
                     dutyQueueScore: dutyScore,
                     trainingQueueScore: trainingScore,
+                    initialDutyQueueScore: dutyScore,
+                    initialTrainingQueueScore: trainingScore,
                     queueScore: dutyScore,
                     dutyDuties: teacher.totalDuties ?? 0,
                     trainingDuties: teacher.trainingDuties ?? 0,
@@ -1979,13 +2025,17 @@
             const label = isTraining ? 'คิวอบรม' : 'คิวออกงาน';
             const accentBg = isTraining ? 'rgba(225, 177, 193, 0.55)' : 'rgba(196, 233, 248, 0.55)';
             const accentText = isTraining ? '#5b2d38' : '#2a5a6f';
+            const resetButtonHtml = `<button type="button" class="queue-reset-button" onclick="confirmResetQueue('${queueType}')"><span>♻️</span>รีเซ็ตคิวนี้</button>`;
 
             if (!queueTeachers || queueTeachers.length === 0) {
                 return `
                     <div class="space-y-3">
-                        <div class="flex items-center gap-2 text-xs font-semibold text-gray-700">
-                            <span class="inline-flex items-center px-3 py-1 rounded-full" style="background:${accentBg}; color:${accentText};">${label}</span>
-                            <span class="text-[11px] text-gray-500">ยังไม่มีข้อมูลครูในแถวนี้</span>
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-gray-700">
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex items-center px-3 py-1 rounded-full" style="background:${accentBg}; color:${accentText};">${label}</span>
+                                <span class="text-[11px] text-gray-500">ยังไม่มีข้อมูลครูในแถวนี้</span>
+                            </div>
+                            ${resetButtonHtml}
                         </div>
                         <p class="text-gray-500 text-center py-4 text-sm">ยังไม่มีข้อมูลครู</p>
                     </div>
@@ -1998,18 +2048,92 @@
 
             return `
                 <div class="space-y-3">
-                    <div class="flex items-center justify-between text-xs text-gray-600">
+                    <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600">
                         <div class="flex items-center gap-2">
                             <span class="inline-flex items-center px-3 py-1 rounded-full font-semibold" style="background:${accentBg}; color:${accentText};">${label}</span>
                             <span>เรียงตามคะแนน${isTraining ? 'อบรม' : 'ออกงาน'}ล่าสุด</span>
                         </div>
-                        <span>${queueTeachers.length} คน</span>
+                        <div class="flex items-center gap-2">
+                            <span>${queueTeachers.length} คน</span>
+                            ${resetButtonHtml}
+                        </div>
                     </div>
                     <div class="next-queue-grid">
                         ${cardsHtml}
                     </div>
                 </div>
             `;
+        }
+
+        function confirmResetQueue(queueType) {
+            const isTraining = queueType === QUEUE_TYPES.TRAINING;
+            const label = isTraining ? 'คิวอบรม' : 'คิวออกงาน';
+            const confirmMessage = `คุณต้องการรีเซ็ต${label}ทั้งหมดให้กลับเป็นค่าเริ่มต้นหรือไม่?\nระบบจะล้างรายชื่อครูที่ถูกจัดคิวแล้วและคืนค่าคะแนนคิวเริ่มต้น`;
+
+            if (!window.confirm(confirmMessage)) {
+                return;
+            }
+
+            resetQueueAssignments(queueType);
+        }
+
+        function resetQueueAssignments(queueType = QUEUE_TYPES.DUTY) {
+            const isTraining = queueType === QUEUE_TYPES.TRAINING;
+            const label = isTraining ? 'การอบรม' : 'การออกงาน';
+
+            const sourceCollection = getQueueEvents(queueType);
+            const collection = Array.isArray(sourceCollection) ? sourceCollection : [];
+            if (!Array.isArray(sourceCollection)) {
+                setQueueEvents(queueType, []);
+            }
+
+            collection.forEach(item => {
+                if (!item) {
+                    return;
+                }
+                item.assignmentSlots = [];
+                item.assignedTeachers = [];
+                item.status = 'pending';
+            });
+            setQueueEvents(queueType, collection);
+
+            teachers.forEach(teacher => {
+                ensureTeacherStats(teacher);
+                if (isTraining) {
+                    teacher.trainingDuties = 0;
+                    teacher.trainingSwapCount = 0;
+                    teacher.trainingQueueScore = Number.isFinite(Number(teacher.initialTrainingQueueScore))
+                        ? Number(teacher.initialTrainingQueueScore)
+                        : 0;
+                    teacher.lastTrainingDate = null;
+                } else {
+                    teacher.dutyDuties = 0;
+                    teacher.dutySwapCount = 0;
+                    teacher.dutyQueueScore = Number.isFinite(Number(teacher.initialDutyQueueScore))
+                        ? Number(teacher.initialDutyQueueScore)
+                        : 0;
+                    teacher.lastDutyDate = null;
+                }
+                teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
+                teacher.swapCount = (teacher.dutySwapCount || 0) + (teacher.trainingSwapCount || 0);
+                teacher.queueScore = teacher.dutyQueueScore;
+                teacher.lastEventDate = latestDateString(teacher.lastDutyDate, teacher.lastTrainingDate);
+            });
+
+            currentNextQueueSelection = null;
+            renderNextQueueInsight(null, null);
+
+            activityLog.unshift({
+                id: Date.now(),
+                type: isTraining ? 'training-queue-reset' : 'event-queue-reset',
+                description: `รีเซ็ตการจัดคิว${label}ทั้งหมด`,
+                details: `ล้างข้อมูลการจัดคิว${label}และคืนค่าคะแนนให้เป็นค่าเริ่มต้น`,
+                timestamp: new Date().toISOString(),
+                admin: 'Admin'
+            });
+
+            showFirebaseStatus('success', `รีเซ็ต${label}สำเร็จ`, false);
+            saveData();
         }
 
         function renderNextQueueCard(teacher, index, queueType) {
@@ -3244,6 +3368,138 @@
                 return;
             }
 
+        function updateSelectedCount(requiredQuota) {
+            const selectedCount = document.querySelectorAll('.teacher-select-card.border-green-500').length;
+            const countElement = document.getElementById('selected-count');
+            if (countElement) {
+                countElement.textContent = selectedCount;
+                countElement.style.color = selectedCount === requiredQuota ? '#059669' : '#dc2626';
+            }
+        }
+
+        function confirmAutoAssignFromSelection(eventId, queueType = currentEventQueueType) {
+            const selectedCards = document.querySelectorAll('.teacher-select-card.border-green-500');
+            const selectedTeacherIds = Array.from(selectedCards).map(card =>
+                parseInt(card.getAttribute('data-teacher-id'))
+            );
+
+            const event = getEventById(eventId, queueType);
+
+            if (selectedTeacherIds.length !== event.requiredQuota) {
+                alert(`กรุณาเลือกครูให้ครบ ${event.requiredQuota} คน (เลือกแล้ว ${selectedTeacherIds.length} คน)`);
+                return;
+            }
+
+            const selectedTeachers = selectedTeacherIds.map(id => getTeacherById(id));
+            confirmAutoAssign(eventId, selectedTeachers, queueType);
+        }
+
+        function closeAutoAssignModal() {
+            document.getElementById('auto-assign-modal').classList.remove('show');
+        }
+
+        function confirmAutoAssign(eventId, selectedTeachers, queueType = currentEventQueueType) {
+            const event = getEventById(eventId, queueType);
+            const teacherIds = selectedTeachers.map(t => t.teacherId);
+
+            // Update event
+            event.assignedTeachers = teacherIds;
+            event.assignmentSlots = createAssignmentSlotsFromIds(teacherIds);
+            event.status = 'assigned';
+            ensureEventAssignments(event);
+
+            // Update teacher stats - ระบบใหม่: เพิ่มคะแนนตามประเภทคิว
+            selectedTeachers.forEach(teacher => {
+                ensureTeacherStats(teacher);
+                if (queueType === QUEUE_TYPES.TRAINING) {
+                    teacher.trainingDuties = (teacher.trainingDuties || 0) + 1;
+                    teacher.lastTrainingDate = normalizeDateString(event.date);
+                } else {
+                    teacher.dutyDuties = (teacher.dutyDuties || 0) + 1;
+                    teacher.lastDutyDate = normalizeDateString(event.date);
+                }
+                teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
+                adjustTeacherQueueScore(teacher, queueType, 15);
+                teacher.lastEventDate = latestDateString(teacher.lastDutyDate, teacher.lastTrainingDate);
+            });
+
+            // Add activity log
+            const teacherNames = selectedTeachers.map(t => t.name).join(', ');
+            addActivityLog(
+                'auto-assign',
+                `จัดคิวอัตโนมัติสำหรับ${getQueueDisplayName(queueType)} "${getQueueItemName(event, queueType)}"`,
+                `ครูที่ได้รับมอบหมาย: ${teacherNames}`
+            );
+
+            saveData();
+            closeAutoAssignModal();
+            showView(getQueueView(queueType));
+        }
+
+        function openTrainingAutoAssignModal(trainingId) {
+            currentEventQueueType = QUEUE_TYPES.TRAINING;
+            currentEventId = trainingId;
+            const tr = trainings.find(t => t.trainingId === trainingId);
+            if (!tr || tr.status !== 'pending') return;
+
+            const sortedTeachers = [...teachers].sort((a, b) => compareTeachersForQueue(a, b, QUEUE_TYPES.TRAINING));
+            const content = document.getElementById('auto-assign-content');
+
+            content.innerHTML = `
+                <div class="mb-4">
+                    <h4 class="font-semibold text-gray-800 mb-2">อบรม: ${tr.trainingName}</h4>
+                    <p class="text-sm text-gray-600">วันที่: ${formatDateRangeThai(tr.startDate || tr.date, tr.endDate || tr.date)} เวลา: ${tr.time}</p>
+                    <p class="text-sm text-gray-600">ต้องการครู: ${tr.requiredQuota} คน</p>
+                </div>
+                <div class="mb-6">
+                    <h5 class="font-medium text-gray-800 mb-3">เลือกครูที่จะเข้ารับการอบรม (คลิกเพื่อเลือก/ยกเลิก):</h5>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-80 overflow-y-auto">
+                        ${sortedTeachers.map((teacher, index) => {
+                            const isSelected = index < tr.requiredQuota;
+                            return `
+                                <div class="teacher-select-card p-3 border-2 rounded-lg cursor-pointer ${isSelected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}"
+                                     data-teacher-id="${teacher.teacherId}"
+                                     onclick="toggleTeacherSelection(${teacher.teacherId}, ${tr.requiredQuota})">
+                                    <div class="flex flex-col items-center text-center">
+                                        ${createTeacherAvatar(teacher)}
+                                        <div class="mt-2">
+                                            <p class="font-medium text-sm">${teacher.name}</p>
+                                            <p class="text-xs text-gray-600">${teacher.position}</p>
+                                            <div class="flex items-center justify-center mt-1">
+                                                <span class="queue-score text-xs">${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</span>
+                                                ${index < tr.requiredQuota ? '<span class="ml-1 text-xs">⭐</span>' : ''}
+                                            </div>
+                                        </div>
+                                        <div class="selection-indicator mt-2 w-4 h-4 rounded-full border-2 ${isSelected ? 'bg-green-500 border-green-500' : 'border-gray-300'}">
+                                            ${isSelected ? '<span class="text-white text-xs">✓</span>' : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    <div class="mt-3 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
+                        <p><span class="font-medium">💡 คำแนะนำ:</span> เลือกตามคะแนนอบรมต่ำสุดก่อน</p>
+                        <p class="mt-1"><span class="font-medium">เลือกแล้ว:</span> <span id="selected-count">${Math.min(tr.requiredQuota, sortedTeachers.length)}</span>/${tr.requiredQuota} คน</p>
+                    </div>
+                </div>
+            `;
+
+            updateSelectedCount(tr.requiredQuota);
+            document.getElementById('confirm-auto-assign').onclick = () => confirmTrainingAutoAssignFromSelection(trainingId);
+            document.getElementById('auto-assign-modal').classList.add('show');
+        }
+
+        function confirmTrainingAutoAssignFromSelection(trainingId) {
+            const selectedCards = document.querySelectorAll('.teacher-select-card.border-green-500');
+            const selectedIds = Array.from(selectedCards).map(card => parseInt(card.getAttribute('data-teacher-id')));
+            const tr = trainings.find(t => t.trainingId === trainingId);
+
+            if (!tr) {
+                alert('ไม่พบข้อมูลอบรมที่เลือก');
+                return;
+            }
+
             if (selectedIds.length !== tr.requiredQuota) {
                 alert(`กรุณาเลือกครูให้ครบ ${tr.requiredQuota} คน (เลือกแล้ว ${selectedIds.length} คน)`);
                 return;
@@ -3707,6 +3963,8 @@
                 if (currentTeacherId) {
                     const teacher = getTeacherById(currentTeacherId);
                     Object.assign(teacher, teacherData);
+                    teacher.initialDutyQueueScore = teacherData.dutyQueueScore;
+                    teacher.initialTrainingQueueScore = teacherData.trainingQueueScore;
                     ensureTeacherStats(teacher);
 
                     addActivityLog(
@@ -3726,7 +3984,9 @@
                         dutySwapCount: 0,
                         trainingSwapCount: 0,
                         lastDutyDate: null,
-                        lastTrainingDate: null
+                        lastTrainingDate: null,
+                        initialDutyQueueScore: teacherData.dutyQueueScore,
+                        initialTrainingQueueScore: teacherData.trainingQueueScore
                     };
                     ensureTeacherStats(newTeacher);
                     teachers.push(newTeacher);
