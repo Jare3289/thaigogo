@@ -2388,6 +2388,8 @@
             }
 
             modal.classList.add('show');
+
+            setTimeout(() => prepareLocationPicker(targetEvent), 120);
         }
 
         function closeEventModal() {
@@ -2948,6 +2950,16 @@
                 });
             }
         }
+
+        window.initMap = function() {
+            mapsApiReady = true;
+            initializeLocationMap();
+
+            if (pendingLocationEvent) {
+                prepareLocationPicker(pendingLocationEvent);
+                pendingLocationEvent = null;
+            }
+        };
 
         // Initialize application
         document.addEventListener('DOMContentLoaded', async function() {
