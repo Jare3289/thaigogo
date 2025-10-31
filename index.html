@@ -334,6 +334,18 @@
             border: 1px solid rgba(137, 77, 91, 0.18);
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
             min-height: 140px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+
+        .next-queue-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
+        }
+
+        .next-queue-card.is-active {
+            border-color: rgba(137, 77, 91, 0.55);
+            box-shadow: 0 8px 18px rgba(137, 77, 91, 0.15);
         }
 
         .next-queue-card .rank-badge {
@@ -481,6 +493,7 @@
       <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center"><span class="mr-2">⏭️</span>คิวต่อไป - ครูทั้งหมดเรียงตามลำดับความสำคัญ</h3>
       <div id="next-queue"><!-- Next queue will be populated here -->
       </div>
+      <div id="next-queue-insight" class="mt-4 hidden"></div>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       <div class="card p-6 border-l-4" style="border-left-color: var(--secondary-bg);">
@@ -683,7 +696,7 @@
      </div>
      <input type="hidden" id="event-location-lat" value="">
      <input type="hidden" id="event-location-lng" value="">
-     <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="closeEventModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
+     <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="resetEventForm()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> รีเซ็ต </button><button type="button" onclick="closeEventModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
      </div>
     </form>
    </div>
@@ -699,12 +712,12 @@
      <div class="form-group"><label class="form-label">ตำแหน่ง</label> <input type="text" id="teacher-position" class="form-input" required>
      </div>
      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="form-group"><label class="form-label">คะแนนคิวออกงานเริ่มต้น</label> <input type="number" id="teacher-duty-queue-score" class="form-input" value="100" min="0" required>
+      <div class="form-group"><label class="form-label">คะแนนคิวออกงานเริ่มต้น</label> <input type="number" id="teacher-duty-queue-score" class="form-input" value="0" min="0" required>
       </div>
-      <div class="form-group"><label class="form-label">คะแนนคิวอบรมเริ่มต้น</label> <input type="number" id="teacher-training-queue-score" class="form-input" value="100" min="0" required>
+      <div class="form-group"><label class="form-label">คะแนนคิวอบรมเริ่มต้น</label> <input type="number" id="teacher-training-queue-score" class="form-input" value="0" min="0" required>
       </div>
      </div>
-     <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="closeTeacherModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
+     <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="resetTeacherForm()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> รีเซ็ต </button><button type="button" onclick="closeTeacherModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
      </div>
     </form>
    </div>
@@ -763,11 +776,15 @@
       <div class="form-group"><label class="form-label">รายละเอียด</label> <textarea id="training-details" class="form-input" rows="3"></textarea>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-       <div class="form-group"><label class="form-label">วันที่</label> <input type="date" id="training-date" class="form-input" required>
+       <div class="form-group"><label class="form-label">วันที่เริ่ม</label> <input type="date" id="training-start-date" class="form-input" required>
        </div>
-       <div class="form-group md:col-span-1"><label class="form-label">เวลาเริ่มและสิ้นสุด</label>
-        <div class="flex flex-col sm:flex-row gap-3"><input type="time" id="training-start-time" class="form-input sm:flex-1" required> <input type="time" id="training-end-time" class="form-input sm:flex-1" required>
-        </div>
+       <div class="form-group"><label class="form-label">วันที่สิ้นสุด</label> <input type="date" id="training-end-date" class="form-input" required>
+       </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+       <div class="form-group"><label class="form-label">เวลาเริ่ม</label> <input type="time" id="training-start-time" class="form-input" required>
+       </div>
+       <div class="form-group"><label class="form-label">เวลาสิ้นสุด</label> <input type="time" id="training-end-time" class="form-input" required>
        </div>
       </div>
       <div class="form-group"><label class="form-label">สถานที่</label> <input type="text" id="training-location" class="form-input" required>
@@ -775,11 +792,20 @@
       <div class="form-group md:w-1/2"><label class="form-label">จำนวนครูที่ต้องการ</label> <input type="number" id="training-quota" class="form-input" min="1" required>
       </div>
      </div><input type="hidden" id="training-location-lat" value=""><input type="hidden" id="training-location-lng" value="">
-     <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="closeTrainingModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
+     <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="resetTrainingForm()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> รีเซ็ต </button><button type="button" onclick="closeTrainingModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
      </div>
     </form>
   </div>
  </div>
+  <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
+   <div class="text-center">
+    <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
+   </div>
+  </div>
   <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
    <div class="text-center">
     <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -906,6 +932,10 @@
         let currentEventId = null;
         let currentTeacherId = null;
         let currentTrainingId = null;
+        let currentEventInitialData = null;
+        let currentTeacherInitialData = null;
+        let currentTrainingInitialData = null;
+        let currentNextQueueSelection = null;
         let currentEventQueueType = QUEUE_TYPES.DUTY;
         let selectedTeacherId = null;
         let dataInitialized = false;
@@ -971,7 +1001,7 @@
                 t.dutyQueueScore = fallbackScore;
             }
             if (typeof t.trainingQueueScore !== 'number') {
-                t.trainingQueueScore = fallbackScore;
+                t.trainingQueueScore = 0;
             }
             t.queueScore = t.dutyQueueScore;
             t.lastEventDate = t.lastEventDate ? normalizeDateString(t.lastEventDate) : null;
@@ -1400,7 +1430,7 @@
                     : (typeof teacher.queueScore === 'number' ? teacher.queueScore : 0);
                 const trainingScore = typeof teacher.trainingQueueScore === 'number'
                     ? teacher.trainingQueueScore
-                    : dutyScore;
+                    : 0;
                 const enriched = {
                     ...teacher,
                     dutyQueueScore: dutyScore,
@@ -1506,6 +1536,8 @@
                     trainingId: 1,
                     trainingName: 'อบรม Active Learning สำหรับครูไทย',
                     details: 'หลักสูตรพัฒนาการจัดกิจกรรม Active Learning',
+                    startDate: '2025-06-15',
+                    endDate: '2025-06-15',
                     date: '2025-06-15',
                     startTime: '09:00',
                     endTime: '16:00',
@@ -1749,6 +1781,13 @@
                 if (!normalized.trainingName && normalized.eventName) {
                     normalized.trainingName = normalized.eventName;
                 }
+                const normalizedStart = normalizeDateString(normalized.startDate || normalized.date);
+                const normalizedEnd = normalizeDateString(normalized.endDate || normalized.date || normalizedStart);
+                normalized.startDate = normalizedStart || null;
+                normalized.endDate = normalizedEnd || normalizedStart || null;
+                if (normalized.startDate) {
+                    normalized.date = normalized.startDate;
+                }
                 if (!normalized.time && normalized.startTime && normalized.endTime) {
                     normalized.time = `${normalized.startTime}-${normalized.endTime}`;
                 }
@@ -1756,6 +1795,7 @@
                     normalized.assignedTeachers = [];
                 }
                 normalized.status = normalized.status || 'pending';
+                ensureEventAssignments(normalized);
                 return normalized;
             });
 
@@ -1847,6 +1887,24 @@
                 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
             ];
             return `${date.getDate()} ${months[date.getMonth()]} ${buddhistYear}`;
+        }
+
+        function formatDateRangeThai(startDate, endDate) {
+            const normalizedStart = normalizeDateString(startDate);
+            const normalizedEnd = normalizeDateString(endDate);
+
+            if (!normalizedStart && !normalizedEnd) {
+                return '-';
+            }
+
+            if (normalizedStart && normalizedEnd) {
+                if (normalizedStart === normalizedEnd) {
+                    return formatDateThai(normalizedStart);
+                }
+                return `${formatDateThai(normalizedStart)} - ${formatDateThai(normalizedEnd)}`;
+            }
+
+            return formatDateThai(normalizedStart || normalizedEnd);
         }
 
         function formatDateTimeThai(value) {
@@ -1971,23 +2029,154 @@
             const lastDateText = lastKeyDate ? `ล่าสุด ${formatDateThai(lastKeyDate)}` : '';
             const queueScore = getTeacherQueueScore(teacher, queueType);
             const scoreLabel = queueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน';
+            const queueLabelShort = queueType === QUEUE_TYPES.TRAINING ? 'อบรม' : 'ออกงาน';
 
             return `
-                <div class="next-queue-card">
+                <div class="next-queue-card" data-teacher-id="${teacher.teacherId}" data-queue-type="${queueType}" onclick="handleNextQueueCardClick(${teacher.teacherId}, '${queueType}')">
                     <div class="w-full flex items-center justify-between text-[11px] text-gray-500 font-semibold">
                         <span class="rank-badge">${rankIcon} #${index + 1}</span>
-                        <span class="text-sm font-bold text-[#5b2d38]">${scoreLabel} ${queueScore}</span>
+                        <span class="uppercase tracking-wide">${queueLabelShort}</span>
                     </div>
                     ${createTeacherAvatar(teacher, true)}
                     <div class="text-center space-y-1 w-full">
                         <h4 class="font-semibold text-sm text-gray-900 leading-tight">${teacher.name}</h4>
                         <p class="text-[11px] text-gray-500 leading-tight">${teacher.position}</p>
                         ${lastDateText ? `<p class="text-[10px] text-gray-400 leading-tight">${lastDateText}</p>` : ''}
+                        <p class="text-xs font-semibold" style="color:#5b2d38;">${scoreLabel} ${queueScore}</p>
                     </div>
                     <div class="w-full space-y-1">
                         <div class="${dutyClass}"><span>งาน</span><span class="font-semibold text-gray-700">${dutyCount}</span></div>
                         <div class="${trainingClass}"><span>อบรม</span><span class="font-semibold text-gray-700">${trainingCount}</span></div>
                         <div class="queue-mini-stat is-sub"><span>แทนรวม</span><span class="font-semibold text-gray-700">${swapCount}</span></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function handleNextQueueCardClick(teacherId, queueType) {
+            currentNextQueueSelection = { teacherId, queueType };
+            highlightNextQueueSelection();
+            renderNextQueueInsightFromSelection();
+        }
+
+        function highlightNextQueueSelection() {
+            const cards = document.querySelectorAll('.next-queue-card');
+            cards.forEach(card => {
+                const cardTeacherId = parseInt(card.getAttribute('data-teacher-id'), 10);
+                const cardType = card.getAttribute('data-queue-type');
+                if (currentNextQueueSelection && cardTeacherId === currentNextQueueSelection.teacherId && cardType === currentNextQueueSelection.queueType) {
+                    card.classList.add('is-active');
+                } else {
+                    card.classList.remove('is-active');
+                }
+            });
+        }
+
+        function renderNextQueueInsightFromSelection() {
+            if (!currentNextQueueSelection) {
+                renderNextQueueInsight(null, null);
+                return;
+            }
+            const teacher = getTeacherById(currentNextQueueSelection.teacherId);
+            if (!teacher) {
+                currentNextQueueSelection = null;
+                renderNextQueueInsight(null, null);
+                return;
+            }
+            renderNextQueueInsight(teacher, currentNextQueueSelection.queueType);
+        }
+
+        function renderNextQueueInsight(teacher, queueType) {
+            const container = document.getElementById('next-queue-insight');
+            if (!container) {
+                return;
+            }
+
+            if (!teacher || !queueType) {
+                container.classList.add('hidden');
+                container.innerHTML = '';
+                return;
+            }
+
+            ensureTeacherStats(teacher);
+            const queueLabel = queueType === QUEUE_TYPES.TRAINING ? 'คิวอบรม' : 'คิวออกงาน';
+            const queueScore = getTeacherQueueScore(teacher, queueType);
+            const otherScore = getTeacherQueueScore(teacher, queueType === QUEUE_TYPES.TRAINING ? QUEUE_TYPES.DUTY : QUEUE_TYPES.TRAINING);
+            const rankingList = [...teachers].sort((a, b) => compareTeachersForQueue(a, b, queueType));
+            const rankIndex = rankingList.findIndex(item => item.teacherId === teacher.teacherId);
+            const rank = rankIndex >= 0 ? rankIndex + 1 : '-';
+            const totalCount = rankingList.length || '-';
+
+            const lastDutyText = teacher.lastDutyDate ? formatDateThai(teacher.lastDutyDate) : '-';
+            const lastTrainingText = teacher.lastTrainingDate ? formatDateThai(teacher.lastTrainingDate) : '-';
+
+            const relatedEvents = events
+                .filter(event => Array.isArray(event.assignedTeachers) && event.assignedTeachers.includes(teacher.teacherId))
+                .sort((a, b) => (safeDate(b.date) || new Date(0)) - (safeDate(a.date) || new Date(0)))
+                .slice(0, 2);
+
+            const relatedTrainings = trainings
+                .filter(event => Array.isArray(event.assignedTeachers) && event.assignedTeachers.includes(teacher.teacherId))
+                .sort((a, b) => (safeDate(b.startDate || b.date) || new Date(0)) - (safeDate(a.startDate || a.date) || new Date(0)))
+                .slice(0, 2);
+
+            const relatedHtml = queueType === QUEUE_TYPES.TRAINING ? relatedTrainings : relatedEvents;
+            const relatedItemsHtml = relatedHtml.length > 0
+                ? relatedHtml.map(item => {
+                    const isTraining = queueType === QUEUE_TYPES.TRAINING;
+                    const displayName = isTraining ? (item.trainingName || item.eventName) : item.eventName;
+                    const dateDisplay = isTraining
+                        ? formatDateRangeThai(item.startDate || item.date, item.endDate || item.date)
+                        : formatDateThai(item.date);
+                    const statusText = item.status === 'assigned' ? 'จัดคิวแล้ว'
+                        : item.status === 'completed' ? 'เสร็จสิ้น' : 'รอจัดคิว';
+                    return `
+                        <li class="flex justify-between items-center text-xs bg-white border border-gray-200 rounded-lg px-3 py-2">
+                            <div>
+                                <p class="font-semibold text-gray-800">${displayName}</p>
+                                <p class="text-gray-500">${dateDisplay} • ${item.time || '-'}</p>
+                            </div>
+                            <span class="text-[11px] text-gray-500">${statusText}</span>
+                        </li>
+                    `;
+                }).join('')
+                : '<li class="text-xs text-gray-500">ยังไม่มีประวัติที่เกี่ยวข้อง</li>';
+
+            container.classList.remove('hidden');
+            container.innerHTML = `
+                <div class="card p-4">
+                    <div class="flex items-center gap-4">
+                        ${createTeacherAvatar(teacher, true)}
+                        <div class="flex-1">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                    <h4 class="text-lg font-bold text-gray-800">${teacher.name}</h4>
+                                    <p class="text-sm text-gray-600">${teacher.position}</p>
+                                </div>
+                                <span class="px-3 py-1 rounded-full text-xs font-semibold" style="background: rgba(137,77,91,0.1); color:#5b2d38;">${queueLabel} ลำดับ ${rank}/${totalCount}</span>
+                            </div>
+                            <div class="flex flex-wrap gap-2 mt-3">
+                                <span class="queue-score">${queueLabel} ${queueScore}</span>
+                                <span class="queue-score" style="background: rgba(36,95,122,0.1); color:#245f7a;">${queueType === QUEUE_TYPES.TRAINING ? 'คะแนนออกงาน' : 'คะแนนอบรม'} ${otherScore}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 text-sm text-gray-600">
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <p class="font-semibold text-gray-700 mb-1">สถิติรวม</p>
+                            <p>ออกงานทั้งหมด: <strong>${teacher.dutyDuties ?? 0}</strong></p>
+                            <p>อบรมทั้งหมด: <strong>${teacher.trainingDuties ?? 0}</strong></p>
+                            <p>การแทนรวม: <strong>${teacher.swapCount ?? 0}</strong> (งาน ${teacher.dutySwapCount ?? 0} | อบรม ${teacher.trainingSwapCount ?? 0})</p>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <p class="font-semibold text-gray-700 mb-1">ประวัติล่าสุด</p>
+                            <p>ออกงานล่าสุด: <strong>${lastDutyText}</strong></p>
+                            <p>อบรมล่าสุด: <strong>${lastTrainingText}</strong></p>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <p class="text-sm font-semibold text-gray-700 mb-2">ประวัติที่เกี่ยวข้อง (${queueLabel})</p>
+                        <ul class="space-y-2">${relatedItemsHtml}</ul>
                     </div>
                 </div>
             `;
@@ -2080,6 +2269,8 @@
                 buildNextQueueSection(QUEUE_TYPES.DUTY, dutyQueueTeachers),
                 buildNextQueueSection(QUEUE_TYPES.TRAINING, trainingQueueTeachers)
             ].join(divider);
+            highlightNextQueueSelection();
+            renderNextQueueInsightFromSelection();
 
             // Render urgent events (pending events sorted by date)
             const urgentEvents = events
@@ -2266,13 +2457,18 @@
         }
 
         function renderTrainingsTable() {
-            const sortedTrainings = [...trainings].sort((a, b) => new Date(b.date) - new Date(a.date));
+            const sortedTrainings = [...trainings].sort((a, b) => {
+                const bDate = safeDate(b.startDate || b.date) || new Date(0);
+                const aDate = safeDate(a.startDate || a.date) || new Date(0);
+                return bDate - aDate;
+            });
             const container = document.getElementById('trainings-cards');
             if (!container) {
                 return;
             }
 
             const html = sortedTrainings.map(tr => {
+                const dateRange = formatDateRangeThai(tr.startDate || tr.date, tr.endDate || tr.date);
                 const statusClass = tr.status === 'assigned' ? 'status-assigned'
                     : tr.status === 'completed' ? 'status-completed' : 'status-pending';
                 const statusText = tr.status === 'assigned' ? 'จัดคิวแล้ว'
@@ -2288,7 +2484,7 @@
                             <div class="flex-1">
                                 <h3 class="font-semibold text-gray-800 text-lg mb-2">${tr.trainingName}</h3>
                                 <div class="space-y-1 text-sm text-gray-600">
-                                    <p class="flex items-center"><span class="mr-2">📅</span>${formatDateThai(tr.date)}</p>
+                                    <p class="flex items-center"><span class="mr-2">📅</span>${dateRange}</p>
                                     <p class="flex items-center"><span class="mr-2">⏰</span>${tr.time}</p>
                                     <p class="flex items-center"><span class="mr-2">📍</span>${tr.location}</p>
                                 </div>
@@ -2447,16 +2643,16 @@
                 `;
             }).join('');
 
-            const highlightTraining = relatedTrainingEvents.slice(0, 3).map(event => {
-                const statusLabel = event.status === 'assigned' ? 'จัดคิวแล้ว' : event.status === 'completed' ? 'เสร็จสิ้น' : 'รอจัดคิว';
-                return `
-                    <li class="p-3 rounded-lg border border-blue-200 bg-blue-50">
-                        <p class="font-medium text-gray-800">${event.trainingName || event.eventName}</p>
-                        <p class="text-xs text-gray-500">${formatDateThai(event.date)} • ${event.time}</p>
-                        <p class="text-xs text-gray-500">สถานที่: ${event.location}</p>
-                        <span class="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-full" style="background: rgba(196, 233, 248, 0.6); color: #245f7a;">${statusLabel}</span>
-                    </li>
-                `;
+                const highlightTraining = relatedTrainingEvents.slice(0, 3).map(event => {
+                    const statusLabel = event.status === 'assigned' ? 'จัดคิวแล้ว' : event.status === 'completed' ? 'เสร็จสิ้น' : 'รอจัดคิว';
+                    return `
+                        <li class="p-3 rounded-lg border border-blue-200 bg-blue-50">
+                            <p class="font-medium text-gray-800">${event.trainingName || event.eventName}</p>
+                            <p class="text-xs text-gray-500">${formatDateRangeThai(event.startDate || event.date, event.endDate || event.date)} • ${event.time}</p>
+                            <p class="text-xs text-gray-500">สถานที่: ${event.location}</p>
+                            <span class="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-full" style="background: rgba(196, 233, 248, 0.6); color: #245f7a;">${statusLabel}</span>
+                        </li>
+                    `;
             }).join('');
 
             panel.innerHTML = `
@@ -2616,6 +2812,33 @@
             }).join('');
         }
 
+        function fillEventFormFields(data = {}) {
+            document.getElementById('event-name').value = data.eventName || '';
+            document.getElementById('event-details').value = data.details || '';
+            document.getElementById('event-date').value = data.date || '';
+            document.getElementById('event-start-time').value = data.startTime || '';
+            document.getElementById('event-end-time').value = data.endTime || '';
+            document.getElementById('event-location').value = data.location || '';
+            const quota = parseInt(data.requiredQuota, 10);
+            document.getElementById('event-quota').value = Number.isFinite(quota) ? quota : '';
+            const latInput = document.getElementById('event-location-lat');
+            const lngInput = document.getElementById('event-location-lng');
+            if (latInput) latInput.value = data.locationLat ?? '';
+            if (lngInput) lngInput.value = data.locationLng ?? '';
+        }
+
+        function resetEventForm() {
+            const form = document.getElementById('event-form');
+            if (currentEventInitialData) {
+                fillEventFormFields(currentEventInitialData);
+            } else if (form) {
+                form.reset();
+                fillEventFormFields({ requiredQuota: '' });
+            }
+
+            renderEventAssignmentSummary(currentEventId ? getEventById(currentEventId, currentEventQueueType) : null);
+        }
+
         function openEventModal(eventId = null, queueType = QUEUE_TYPES.DUTY) {
             currentEventId = eventId;
             currentEventQueueType = queueType || QUEUE_TYPES.DUTY;
@@ -2632,25 +2855,24 @@
                     return;
                 }
                 title.textContent = `แก้ไข${queueLabel}`;
-                document.getElementById('event-name').value = event.eventName || '';
-                document.getElementById('event-details').value = event.details || '';
-                document.getElementById('event-date').value = event.date || '';
-                document.getElementById('event-start-time').value = event.startTime || '';
-                document.getElementById('event-end-time').value = event.endTime || '';
-                document.getElementById('event-location').value = event.location || '';
-                document.getElementById('event-quota').value = event.requiredQuota || 0;
-                const latInput = document.getElementById('event-location-lat');
-                const lngInput = document.getElementById('event-location-lng');
-                if (latInput) latInput.value = event.locationLat ?? '';
-                if (lngInput) lngInput.value = event.locationLng ?? '';
+                fillEventFormFields(event);
+                currentEventInitialData = {
+                    eventName: event.eventName || '',
+                    details: event.details || '',
+                    date: event.date || '',
+                    startTime: event.startTime || '',
+                    endTime: event.endTime || '',
+                    location: event.location || '',
+                    locationLat: event.locationLat ?? '',
+                    locationLng: event.locationLng ?? '',
+                    requiredQuota: event.requiredQuota ?? ''
+                };
                 renderEventAssignmentSummary(event);
             } else {
                 title.textContent = `เพิ่ม${queueLabel}ใหม่`;
                 form.reset();
-                const latInput = document.getElementById('event-location-lat');
-                const lngInput = document.getElementById('event-location-lng');
-                if (latInput) latInput.value = '';
-                if (lngInput) lngInput.value = '';
+                currentEventInitialData = null;
+                fillEventFormFields({ requiredQuota: '' });
                 renderEventAssignmentSummary(null);
             }
 
@@ -2660,7 +2882,34 @@
         function closeEventModal() {
             document.getElementById('event-modal').classList.remove('show');
             currentEventId = null;
+            currentEventInitialData = null;
             renderEventAssignmentSummary(null);
+        }
+
+        function fillTrainingFormFields(data = {}) {
+            document.getElementById('training-name').value = data.trainingName || '';
+            document.getElementById('training-details').value = data.details || '';
+            document.getElementById('training-start-date').value = data.startDate || data.date || '';
+            document.getElementById('training-end-date').value = data.endDate || data.date || '';
+            document.getElementById('training-start-time').value = data.startTime || '';
+            document.getElementById('training-end-time').value = data.endTime || '';
+            document.getElementById('training-location').value = data.location || '';
+            const quota = parseInt(data.requiredQuota, 10);
+            document.getElementById('training-quota').value = Number.isFinite(quota) ? quota : '';
+            const latInput = document.getElementById('training-location-lat');
+            const lngInput = document.getElementById('training-location-lng');
+            if (latInput) latInput.value = data.locationLat ?? '';
+            if (lngInput) lngInput.value = data.locationLng ?? '';
+        }
+
+        function resetTrainingForm() {
+            const form = document.getElementById('training-form');
+            if (currentTrainingInitialData) {
+                fillTrainingFormFields(currentTrainingInitialData);
+            } else if (form) {
+                form.reset();
+                fillTrainingFormFields({ requiredQuota: '' });
+            }
         }
 
         function openTrainingModal(trainingId = null) {
@@ -2679,20 +2928,24 @@
                     return;
                 }
                 title.textContent = 'แก้ไขอบรม';
-                document.getElementById('training-name').value = tr.trainingName || '';
-                document.getElementById('training-details').value = tr.details || '';
-                document.getElementById('training-date').value = tr.date || '';
-                document.getElementById('training-start-time').value = tr.startTime || '';
-                document.getElementById('training-end-time').value = tr.endTime || '';
-                document.getElementById('training-location').value = tr.location || '';
-                document.getElementById('training-quota').value = tr.requiredQuota || 1;
-                if (latInput) latInput.value = tr.locationLat ?? '';
-                if (lngInput) lngInput.value = tr.locationLng ?? '';
+                fillTrainingFormFields(tr);
+                currentTrainingInitialData = {
+                    trainingName: tr.trainingName || '',
+                    details: tr.details || '',
+                    startDate: tr.startDate || tr.date || '',
+                    endDate: tr.endDate || tr.date || '',
+                    startTime: tr.startTime || '',
+                    endTime: tr.endTime || '',
+                    location: tr.location || '',
+                    locationLat: tr.locationLat ?? '',
+                    locationLng: tr.locationLng ?? '',
+                    requiredQuota: tr.requiredQuota ?? ''
+                };
             } else {
                 title.textContent = 'เพิ่มอบรมใหม่';
                 form.reset();
-                if (latInput) latInput.value = '';
-                if (lngInput) lngInput.value = '';
+                currentTrainingInitialData = null;
+                fillTrainingFormFields({ requiredQuota: '' });
             }
 
             modal.classList.add('show');
@@ -2701,10 +2954,30 @@
         function closeTrainingModal() {
             document.getElementById('training-modal').classList.remove('show');
             currentTrainingId = null;
+            currentTrainingInitialData = null;
         }
 
         function editTraining(id) {
             openTrainingModal(id);
+        }
+
+        function fillTeacherFormFields(data = {}) {
+            document.getElementById('teacher-name').value = data.name || '';
+            document.getElementById('teacher-position').value = data.position || '';
+            const dutyScore = parseInt(data.dutyQueueScore, 10);
+            const trainingScore = parseInt(data.trainingQueueScore, 10);
+            document.getElementById('teacher-duty-queue-score').value = Number.isFinite(dutyScore) ? dutyScore : 0;
+            document.getElementById('teacher-training-queue-score').value = Number.isFinite(trainingScore) ? trainingScore : 0;
+        }
+
+        function resetTeacherForm() {
+            const form = document.getElementById('teacher-form');
+            if (currentTeacherInitialData) {
+                fillTeacherFormFields(currentTeacherInitialData);
+            } else if (form) {
+                form.reset();
+                fillTeacherFormFields({ dutyQueueScore: 0, trainingQueueScore: 0 });
+            }
         }
 
         function openTeacherModal(teacherId = null) {
@@ -2716,15 +2989,25 @@
             if (teacherId) {
                 const teacher = getTeacherById(teacherId);
                 title.textContent = 'แก้ไขข้อมูลครู';
-                document.getElementById('teacher-name').value = teacher.name;
-                document.getElementById('teacher-position').value = teacher.position;
-                document.getElementById('teacher-duty-queue-score').value = getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY);
-                document.getElementById('teacher-training-queue-score').value = getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING);
+                const dutyScore = getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY);
+                const trainingScore = getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING);
+                fillTeacherFormFields({
+                    name: teacher.name,
+                    position: teacher.position,
+                    dutyQueueScore: dutyScore,
+                    trainingQueueScore: trainingScore
+                });
+                currentTeacherInitialData = {
+                    name: teacher.name,
+                    position: teacher.position,
+                    dutyQueueScore: dutyScore,
+                    trainingQueueScore: trainingScore
+                };
             } else {
                 title.textContent = 'เพิ่มครูใหม่';
                 form.reset();
-                document.getElementById('teacher-duty-queue-score').value = 100;
-                document.getElementById('teacher-training-queue-score').value = 100;
+                currentTeacherInitialData = null;
+                fillTeacherFormFields({ dutyQueueScore: 0, trainingQueueScore: 0 });
             }
 
             modal.classList.add('show');
@@ -2733,6 +3016,7 @@
         function closeTeacherModal() {
             document.getElementById('teacher-modal').classList.remove('show');
             currentTeacherId = null;
+            currentTeacherInitialData = null;
         }
 
         function openAutoAssignModal(eventId, queueType = QUEUE_TYPES.DUTY) {
@@ -2908,7 +3192,7 @@
             content.innerHTML = `
                 <div class="mb-4">
                     <h4 class="font-semibold text-gray-800 mb-2">อบรม: ${tr.trainingName}</h4>
-                    <p class="text-sm text-gray-600">วันที่: ${formatDateThai(tr.date)} เวลา: ${tr.time}</p>
+                    <p class="text-sm text-gray-600">วันที่: ${formatDateRangeThai(tr.startDate || tr.date, tr.endDate || tr.date)} เวลา: ${tr.time}</p>
                     <p class="text-sm text-gray-600">ต้องการครู: ${tr.requiredQuota} คน</p>
                 </div>
                 <div class="mb-6">
@@ -2990,7 +3274,7 @@
                 teacher.trainingDuties = (teacher.trainingDuties || 0) + 1;
                 teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
                 adjustTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING, 15);
-                teacher.lastTrainingDate = normalizeDateString(tr.date);
+                teacher.lastTrainingDate = normalizeDateString(tr.endDate || tr.startDate || tr.date);
                 teacher.lastEventDate = latestDateString(teacher.lastDutyDate, teacher.lastTrainingDate);
             });
 
@@ -3341,8 +3625,17 @@
             if (!form.reportValidity()) return;
 
             try {
+                const startDate = safeValue('training-start-date');
+                const endDateInput = safeValue('training-end-date');
                 const startTime = safeValue('training-start-time');
                 const endTime = safeValue('training-end-time');
+
+                const normalizedStart = normalizeDateString(startDate);
+                const normalizedEnd = normalizeDateString(endDateInput) || normalizedStart;
+                if (normalizedStart && normalizedEnd && (new Date(normalizedEnd) < new Date(normalizedStart))) {
+                    alert('วันที่สิ้นสุดต้องไม่มาก่อนวันที่เริ่ม');
+                    return;
+                }
 
                 const latRaw = parseFloat(safeValue('training-location-lat'));
                 const lngRaw = parseFloat(safeValue('training-location-lng'));
@@ -3352,7 +3645,9 @@
                 const data = {
                     trainingName: safeValue('training-name'),
                     details: safeValue('training-details'),
-                    date: safeValue('training-date'),
+                    startDate: normalizedStart || '',
+                    endDate: normalizedEnd || '',
+                    date: normalizedStart || '',
                     startTime,
                     endTime,
                     time: `${startTime}-${endTime}`,
@@ -3368,20 +3663,21 @@
                     addActivityLog(
                         'training-manual-edit',
                         `แก้ไขข้อมูลอบรม "${data.trainingName}"`,
-                        `วันที่: ${formatDateThai(data.date)} | เวลา: ${data.time} | สถานที่: ${data.location} | โควตาครู: ${data.requiredQuota} คน`
+                        `วันที่: ${formatDateRangeThai(data.startDate, data.endDate)} | เวลา: ${data.time} | สถานที่: ${data.location} | โควตาครู: ${data.requiredQuota} คน`
                     );
                 } else {
                     const newTraining = {
                         trainingId: Math.max(...trainings.map(t => t.trainingId), 0) + 1,
                         ...data,
                         assignedTeachers: [],
+                        assignmentSlots: [],
                         status: 'pending'
                     };
                     trainings.push(newTraining);
                     addActivityLog(
                         'training-manual-edit',
                         `เพิ่มอบรมใหม่ "${data.trainingName}"`,
-                        `วันที่: ${formatDateThai(data.date)} | เวลา: ${data.time} | สถานที่: ${data.location} | โควตาครู: ${data.requiredQuota} คน`
+                        `วันที่: ${formatDateRangeThai(data.startDate, data.endDate)} | เวลา: ${data.time} | สถานที่: ${data.location} | โควตาครู: ${data.requiredQuota} คน`
                     );
                 }
 
@@ -3501,7 +3797,7 @@
             if (currentEventQueueType === QUEUE_TYPES.TRAINING) {
                 substituteTeacher.trainingDuties = (substituteTeacher.trainingDuties || 0) + 1;
                 substituteTeacher.trainingSwapCount = (substituteTeacher.trainingSwapCount || 0) + 1;
-                substituteTeacher.lastTrainingDate = normalizeDateString(event.date);
+                substituteTeacher.lastTrainingDate = normalizeDateString(event.endDate || event.startDate || event.date);
             } else {
                 substituteTeacher.dutyDuties = (substituteTeacher.dutyDuties || 0) + 1;
                 substituteTeacher.dutySwapCount = (substituteTeacher.dutySwapCount || 0) + 1;
