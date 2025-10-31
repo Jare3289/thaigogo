@@ -536,7 +536,7 @@
        </div>
       </div>
       <div class="card p-6">
-       <h3 class="text-lg font-semibold text-gray-800 mb-4">ครูที่มีคะแนนคิวสูงสุด</h3>
+       <h3 class="text-lg font-semibold text-gray-800 mb-4">ครูที่ควรออกงานถัดไป (คะแนนออกงานต่ำสุด)</h3>
        <div id="top-queue-teachers" class="space-y-3"><!-- Top queue teachers will be populated here -->
        </div>
       </div>
@@ -609,7 +609,8 @@
             <th>ลำดับ</th>
             <th>ชื่อครู</th>
             <th>ตำแหน่ง</th>
-            <th>คะแนนคิว</th>
+            <th>คะแนนออกงาน</th>
+            <th>คะแนนอบรม</th>
             <th>ออกงาน</th>
             <th>อบรม</th>
             <th>แทนรวม</th>
@@ -697,7 +698,11 @@
      </div>
      <div class="form-group"><label class="form-label">ตำแหน่ง</label> <input type="text" id="teacher-position" class="form-input" required>
      </div>
-     <div class="form-group"><label class="form-label">คะแนนคิวเริ่มต้น</label> <input type="number" id="teacher-queue-score" class="form-input" value="100" min="0" required>
+     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="form-group"><label class="form-label">คะแนนคิวออกงานเริ่มต้น</label> <input type="number" id="teacher-duty-queue-score" class="form-input" value="100" min="0" required>
+      </div>
+      <div class="form-group"><label class="form-label">คะแนนคิวอบรมเริ่มต้น</label> <input type="number" id="teacher-training-queue-score" class="form-input" value="100" min="0" required>
+      </div>
      </div>
      <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="closeTeacherModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
      </div>
@@ -775,6 +780,15 @@
     </form>
   </div>
  </div>
+  <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
+   <div class="text-center">
+    <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
+   </div>
+  </div>
   <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
    <div class="text-center">
     <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -932,17 +946,72 @@
             if (!t) {
                 return t;
             }
+
+            const fallbackScore = typeof t.queueScore === 'number' ? t.queueScore : 0;
+
             if (typeof t.totalDuties !== 'number') {
                 t.totalDuties = 0;
             }
             if (typeof t.swapCount !== 'number') {
                 t.swapCount = 0;
             }
-            if (typeof t.queueScore !== 'number') {
-                t.queueScore = 0;
+            if (typeof t.dutyDuties !== 'number') {
+                t.dutyDuties = typeof t.totalDuties === 'number' ? t.totalDuties : 0;
             }
+            if (typeof t.trainingDuties !== 'number') {
+                t.trainingDuties = 0;
+            }
+            if (typeof t.dutySwapCount !== 'number') {
+                t.dutySwapCount = 0;
+            }
+            if (typeof t.trainingSwapCount !== 'number') {
+                t.trainingSwapCount = 0;
+            }
+            if (typeof t.dutyQueueScore !== 'number') {
+                t.dutyQueueScore = fallbackScore;
+            }
+            if (typeof t.trainingQueueScore !== 'number') {
+                t.trainingQueueScore = fallbackScore;
+            }
+            t.queueScore = t.dutyQueueScore;
             t.lastEventDate = t.lastEventDate ? normalizeDateString(t.lastEventDate) : null;
+            t.lastDutyDate = t.lastDutyDate ? normalizeDateString(t.lastDutyDate) : null;
+            t.lastTrainingDate = t.lastTrainingDate ? normalizeDateString(t.lastTrainingDate) : null;
+
             return t;
+        }
+
+        function getTeacherQueueScore(teacher, queueType = QUEUE_TYPES.DUTY) {
+            if (!teacher) {
+                return 0;
+            }
+            ensureTeacherStats(teacher);
+            const value = queueType === QUEUE_TYPES.TRAINING
+                ? teacher.trainingQueueScore
+                : teacher.dutyQueueScore;
+            return Number.isFinite(value) ? value : 0;
+        }
+
+        function setTeacherQueueScore(teacher, queueType, value) {
+            if (!teacher) {
+                return;
+            }
+            ensureTeacherStats(teacher);
+            const numericValue = Number.isFinite(value) ? value : 0;
+            if (queueType === QUEUE_TYPES.TRAINING) {
+                teacher.trainingQueueScore = numericValue;
+            } else {
+                teacher.dutyQueueScore = numericValue;
+            }
+            teacher.queueScore = teacher.dutyQueueScore;
+        }
+
+        function adjustTeacherQueueScore(teacher, queueType, delta) {
+            if (!teacher) {
+                return;
+            }
+            const current = getTeacherQueueScore(teacher, queueType);
+            setTeacherQueueScore(teacher, queueType, current + delta);
         }
 
         function ensureAllTeacherStats(list) {
@@ -1326,8 +1395,17 @@
             ];
 
             return baseTeachers.map(teacher => {
+                const dutyScore = typeof teacher.dutyQueueScore === 'number'
+                    ? teacher.dutyQueueScore
+                    : (typeof teacher.queueScore === 'number' ? teacher.queueScore : 0);
+                const trainingScore = typeof teacher.trainingQueueScore === 'number'
+                    ? teacher.trainingQueueScore
+                    : dutyScore;
                 const enriched = {
                     ...teacher,
+                    dutyQueueScore: dutyScore,
+                    trainingQueueScore: trainingScore,
+                    queueScore: dutyScore,
                     dutyDuties: teacher.totalDuties ?? 0,
                     trainingDuties: teacher.trainingDuties ?? 0,
                     dutySwapCount: teacher.swapCount ?? 0,
@@ -1814,8 +1892,8 @@
         }
 
         function compareTeachersForQueue(a, b, queueType = QUEUE_TYPES.DUTY) {
-            const scoreA = Number.isFinite(a.queueScore) ? a.queueScore : 0;
-            const scoreB = Number.isFinite(b.queueScore) ? b.queueScore : 0;
+            const scoreA = getTeacherQueueScore(a, queueType);
+            const scoreB = getTeacherQueueScore(b, queueType);
 
             if (scoreA !== scoreB) {
                 return scoreA - scoreB;
@@ -1865,7 +1943,7 @@
                     <div class="flex items-center justify-between text-xs text-gray-600">
                         <div class="flex items-center gap-2">
                             <span class="inline-flex items-center px-3 py-1 rounded-full font-semibold" style="background:${accentBg}; color:${accentText};">${label}</span>
-                            <span>เรียงตามคะแนนคิวล่าสุด</span>
+                            <span>เรียงตามคะแนน${isTraining ? 'อบรม' : 'ออกงาน'}ล่าสุด</span>
                         </div>
                         <span>${queueTeachers.length} คน</span>
                     </div>
@@ -1891,12 +1969,14 @@
                 ? (teacher.lastTrainingDate || teacher.lastEventDate)
                 : (teacher.lastDutyDate || teacher.lastEventDate);
             const lastDateText = lastKeyDate ? `ล่าสุด ${formatDateThai(lastKeyDate)}` : '';
+            const queueScore = getTeacherQueueScore(teacher, queueType);
+            const scoreLabel = queueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน';
 
             return `
                 <div class="next-queue-card">
                     <div class="w-full flex items-center justify-between text-[11px] text-gray-500 font-semibold">
                         <span class="rank-badge">${rankIcon} #${index + 1}</span>
-                        <span class="text-sm font-bold text-[#5b2d38]">คะแนน ${teacher.queueScore}</span>
+                        <span class="text-sm font-bold text-[#5b2d38]">${scoreLabel} ${queueScore}</span>
                     </div>
                     ${createTeacherAvatar(teacher, true)}
                     <div class="text-center space-y-1 w-full">
@@ -2035,7 +2115,8 @@
 
             // Render top priority teachers (lowest score first)
             const topTeachers = [...teachers]
-                .sort((a, b) => a.queueScore - b.queueScore)
+                .map(ensureTeacherStats)
+                .sort((a, b) => compareTeachersForQueue(a, b, QUEUE_TYPES.DUTY))
                 .slice(0, 5);
 
             const topTeachersHtml = topTeachers.map(teacher => `
@@ -2048,7 +2129,8 @@
                         </div>
                     </div>
                     <div class="text-right">
-                        <div class="queue-score">${teacher.queueScore}</div>
+                        <div class="queue-score">ออกงาน ${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)}</div>
+                        <div class="queue-score mt-1" style="background: rgba(36, 95, 122, 0.1); color: #245f7a;">อบรม ${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</div>
                         <p class="text-xs text-gray-600 mt-1">งาน ${teacher.dutyDuties ?? 0} | อบรม ${teacher.trainingDuties ?? 0}</p>
                     </div>
                 </div>
@@ -2127,6 +2209,8 @@
                                         const substitutionType = slot.substitutionType || (isSubstituted ? SUBSTITUTION_TYPES.REPLACEMENT : SUBSTITUTION_TYPES.NONE);
                                         const currentName = currentTeacher ? currentTeacher.name : 'ไม่พบข้อมูล';
                                         const originalName = originalTeacher ? originalTeacher.name : 'ไม่ทราบ';
+                                        const scoreLabel = queueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน';
+                                        const scoreValue = currentTeacher ? getTeacherQueueScore(currentTeacher, queueType) : '-';
                                         let detailHtml = '<p class="text-xs text-gray-500">คิวเดิม</p>';
                                         if (isSubstituted) {
                                             if (substitutionType === SUBSTITUTION_TYPES.SWAP) {
@@ -2141,7 +2225,7 @@
                                                 <div class="ml-2">
                                                     <p class="font-medium text-gray-800 text-sm">${currentName}</p>
                                                     ${detailHtml}
-                                                    <div class="queue-score text-xs mt-1">คะแนนคิว ${currentTeacher && typeof currentTeacher.queueScore === 'number' ? currentTeacher.queueScore : '-'}</div>
+                                                    <div class="queue-score text-xs mt-1">${scoreLabel} ${scoreValue}</div>
                                                 </div>
                                             </div>
                                         `;
@@ -2224,12 +2308,13 @@
                                 <div class="flex flex-wrap gap-2">
                                     ${assignedTeachers.map(id => {
                                         const teacher = getTeacherById(id);
+                                        const trainingScore = teacher ? getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING) : '-';
                                         return `
                                             <div class="flex items-center bg-gray-50 p-2 rounded-lg">
                                                 ${createTeacherAvatar(teacher)}
                                                 <div class="ml-2">
                                                     <p class="font-medium text-gray-800 text-sm">${teacher?.name || 'ไม่พบข้อมูล'}</p>
-                                                    <div class="queue-score text-xs">${teacher?.queueScore ?? '-'}</div>
+                                                    <div class="queue-score text-xs">คะแนนอบรม ${trainingScore}</div>
                                                 </div>
                                             </div>
                                         `;
@@ -2269,8 +2354,13 @@
                     return teacher;
                 })
                 .sort((a, b) => {
-                    if (a.queueScore !== b.queueScore) {
-                        return a.queueScore - b.queueScore;
+                    const dutyDiff = getTeacherQueueScore(a, QUEUE_TYPES.DUTY) - getTeacherQueueScore(b, QUEUE_TYPES.DUTY);
+                    if (dutyDiff !== 0) {
+                        return dutyDiff;
+                    }
+                    const trainingDiff = getTeacherQueueScore(a, QUEUE_TYPES.TRAINING) - getTeacherQueueScore(b, QUEUE_TYPES.TRAINING);
+                    if (trainingDiff !== 0) {
+                        return trainingDiff;
                     }
                     const dateA = a.lastEventDate ? new Date(a.lastEventDate) : new Date(0);
                     const dateB = b.lastEventDate ? new Date(b.lastEventDate) : new Date(0);
@@ -2303,7 +2393,8 @@
                             </div>
                         </td>
                         <td class="text-sm text-gray-600">${teacher.position}</td>
-                        <td class="font-semibold text-[#5b2d38]">${teacher.queueScore}</td>
+                        <td class="font-semibold text-[#5b2d38]">${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)}</td>
+                        <td class="font-semibold text-[#245f7a]">${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</td>
                         <td class="text-center">${teacher.dutyDuties ?? 0}</td>
                         <td class="text-center">${teacher.trainingDuties ?? 0}</td>
                         <td class="text-center">${teacher.swapCount ?? 0}</td>
@@ -2374,13 +2465,16 @@
                     <div>
                         <h3 class="text-xl font-bold text-gray-800">${teacher.name}</h3>
                         <p class="text-sm text-gray-600">${teacher.position}</p>
-                        <div class="mt-2">
-                            <span class="queue-score">คะแนนคิว ${teacher.queueScore}</span>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            <span class="queue-score">คะแนนออกงาน ${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)}</span>
+                            <span class="queue-score" style="background: rgba(36, 95, 122, 0.1); color: #245f7a;">คะแนนอบรม ${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</span>
                         </div>
                     </div>
                 </div>
                 <div class="teacher-detail-card mt-4">
                     <div class="detail-row"><span>ลำดับคิวปัจจุบัน</span><span>${teacher.queueRank ?? '-'}</span></div>
+                    <div class="detail-row"><span>คะแนนออกงาน</span><span>${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)}</span></div>
+                    <div class="detail-row"><span>คะแนนอบรม</span><span>${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</span></div>
                     <div class="detail-row"><span>รวมทั้งหมด (งาน+อบรม)</span><span>${totalAll} ครั้ง</span></div>
                     <div class="detail-row"><span>งาน (Event)</span><span>${totalEvent} ครั้ง</span></div>
                     <div class="detail-row"><span>อบรม (Training)</span><span>${totalTraining} ครั้ง</span></div>
@@ -2492,7 +2586,8 @@
 
                 const originalName = originalTeacher ? originalTeacher.name : 'ไม่ระบุ';
                 const currentName = currentTeacher ? currentTeacher.name : 'ไม่พบข้อมูล';
-                const currentScore = currentTeacher && typeof currentTeacher.queueScore === 'number' ? currentTeacher.queueScore : '-';
+                const currentScore = currentTeacher ? getTeacherQueueScore(currentTeacher, currentEventQueueType) : '-';
+                const scoreLabel = currentEventQueueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน';
 
                 return `
                     <div class="p-3 rounded-lg border ${isSubstituted ? 'border-[#E1B1C1] bg-[#fdf6f8]' : 'border-gray-200 bg-white'}">
@@ -2509,7 +2604,7 @@
                                 <div class="text-right">
                                     <p class="text-xs text-gray-500 uppercase tracking-wide">ผู้ปฏิบัติจริง</p>
                                     <p class="text-sm font-semibold ${isSubstituted ? 'text-[#894D5B]' : 'text-gray-800'}">${currentName}</p>
-                                    <p class="text-xs text-gray-500">คะแนนคิว ${currentScore}</p>
+                                    <p class="text-xs text-gray-500">${scoreLabel} ${currentScore}</p>
                                 </div>
                             </div>
                         </div>
@@ -2560,8 +2655,6 @@
             }
 
             modal.classList.add('show');
-
-            setTimeout(() => prepareLocationPicker(targetEvent), 120);
         }
 
         function closeEventModal() {
@@ -2625,11 +2718,13 @@
                 title.textContent = 'แก้ไขข้อมูลครู';
                 document.getElementById('teacher-name').value = teacher.name;
                 document.getElementById('teacher-position').value = teacher.position;
-                document.getElementById('teacher-queue-score').value = teacher.queueScore;
+                document.getElementById('teacher-duty-queue-score').value = getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY);
+                document.getElementById('teacher-training-queue-score').value = getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING);
             } else {
                 title.textContent = 'เพิ่มครูใหม่';
                 form.reset();
-                document.getElementById('teacher-queue-score').value = 100;
+                document.getElementById('teacher-duty-queue-score').value = 100;
+                document.getElementById('teacher-training-queue-score').value = 100;
             }
 
             modal.classList.add('show');
@@ -2646,19 +2741,21 @@
             if (!event || event.status !== 'pending') return;
 
             // Get teachers sorted by queue score (lowest first)
-            const sortedTeachers = [...teachers].sort((a, b) => a.queueScore - b.queueScore);
+            const sortedTeachers = [...teachers].sort((a, b) => compareTeachersForQueue(a, b, currentEventQueueType));
             const suggestedTeachers = sortedTeachers.slice(0, event.requiredQuota);
 
             const content = document.getElementById('auto-assign-content');
+            const queueAction = currentEventQueueType === QUEUE_TYPES.TRAINING ? 'เข้ารับการอบรม' : 'ออกงาน';
+            const scoreDescriptor = currentEventQueueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน';
             content.innerHTML = `
                 <div class="mb-4">
                     <h4 class="font-semibold text-gray-800 mb-2">${getQueueDisplayName(currentEventQueueType)}: ${event.eventName}</h4>
                     <p class="text-sm text-gray-600">วันที่: ${formatDateThai(event.date)} เวลา: ${event.time}</p>
                     <p class="text-sm text-gray-600">ต้องการครู: ${event.requiredQuota} คน</p>
                 </div>
-                
+
                 <div class="mb-6">
-                    <h5 class="font-medium text-gray-800 mb-3">เลือกครูที่จะออกงาน (คลิกเพื่อเลือก/ยกเลิก):</h5>
+                    <h5 class="font-medium text-gray-800 mb-3">เลือกครูที่จะ${queueAction} (คลิกเพื่อเลือก/ยกเลิก):</h5>
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-80 overflow-y-auto">
                         ${sortedTeachers.map((teacher, index) => {
                             const isSelected = index < event.requiredQuota;
@@ -2673,7 +2770,7 @@
                                                     <p class="font-medium text-sm">${teacher.name}</p>
                                                     <p class="text-xs text-gray-600">${teacher.position}</p>
                                                     <div class="flex items-center justify-center mt-1">
-                                                        <span class="queue-score text-xs">${teacher.queueScore}</span>
+                                                        <span class="queue-score text-xs">${getTeacherQueueScore(teacher, currentEventQueueType)}</span>
                                                         ${isRecommended ? '<span class="ml-1 text-xs">⭐</span>' : ''}
                                                     </div>
                                                     <p class="text-xs text-gray-500">งาน ${teacher.dutyDuties ?? 0} | อบรม ${teacher.trainingDuties ?? 0}</p>
@@ -2687,7 +2784,7 @@
                         }).join('')}
                     </div>
                     <div class="mt-3 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
-                        <p><span class="font-medium">💡 คำแนะนำ:</span> ครูที่มี ⭐ คือครูที่ระบบแนะนำตามคะแนนคิวต่ำสุด</p>
+                        <p><span class="font-medium">💡 คำแนะนำ:</span> ครูที่มี ⭐ คือครูที่ระบบแนะนำตาม${scoreDescriptor}ต่ำสุด</p>
                         <p class="mt-1"><span class="font-medium">เลือกแล้ว:</span> <span id="selected-count">0</span>/${event.requiredQuota} คน</p>
                     </div>
                 </div>
@@ -2771,7 +2868,7 @@
             event.status = 'assigned';
             ensureEventAssignments(event);
 
-            // Update teacher stats - ระบบใหม่: เพิ่มคะแนนเมื่อออกงาน
+            // Update teacher stats - ระบบใหม่: เพิ่มคะแนนตามประเภทคิว
             selectedTeachers.forEach(teacher => {
                 ensureTeacherStats(teacher);
                 if (queueType === QUEUE_TYPES.TRAINING) {
@@ -2782,8 +2879,8 @@
                     teacher.lastDutyDate = normalizeDateString(event.date);
                 }
                 teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
-                teacher.queueScore += 15; // เพิ่มคะแนน 15 เมื่อออกงาน
-                teacher.lastEventDate = normalizeDateString(event.date);
+                adjustTeacherQueueScore(teacher, queueType, 15);
+                teacher.lastEventDate = latestDateString(teacher.lastDutyDate, teacher.lastTrainingDate);
             });
 
             // Add activity log
@@ -2805,7 +2902,7 @@
             const tr = trainings.find(t => t.trainingId === trainingId);
             if (!tr || tr.status !== 'pending') return;
 
-            const sortedTeachers = [...teachers].sort((a, b) => a.queueScore - b.queueScore);
+            const sortedTeachers = [...teachers].sort((a, b) => compareTeachersForQueue(a, b, QUEUE_TYPES.TRAINING));
             const content = document.getElementById('auto-assign-content');
 
             content.innerHTML = `
@@ -2829,7 +2926,7 @@
                                             <p class="font-medium text-sm">${teacher.name}</p>
                                             <p class="text-xs text-gray-600">${teacher.position}</p>
                                             <div class="flex items-center justify-center mt-1">
-                                                <span class="queue-score text-xs">${teacher.queueScore}</span>
+                                                <span class="queue-score text-xs">${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</span>
                                                 ${index < tr.requiredQuota ? '<span class="ml-1 text-xs">⭐</span>' : ''}
                                             </div>
                                         </div>
@@ -2842,7 +2939,7 @@
                         }).join('')}
                     </div>
                     <div class="mt-3 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
-                        <p><span class="font-medium">💡 คำแนะนำ:</span> เลือกตามคะแนนคิวต่ำสุดก่อน</p>
+                        <p><span class="font-medium">💡 คำแนะนำ:</span> เลือกตามคะแนนอบรมต่ำสุดก่อน</p>
                         <p class="mt-1"><span class="font-medium">เลือกแล้ว:</span> <span id="selected-count">${Math.min(tr.requiredQuota, sortedTeachers.length)}</span>/${tr.requiredQuota} คน</p>
                     </div>
                 </div>
@@ -2892,7 +2989,7 @@
                 ensureTeacherStats(teacher);
                 teacher.trainingDuties = (teacher.trainingDuties || 0) + 1;
                 teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
-                teacher.queueScore += 15;
+                adjustTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING, 15);
                 teacher.lastTrainingDate = normalizeDateString(tr.date);
                 teacher.lastEventDate = latestDateString(teacher.lastDutyDate, teacher.lastTrainingDate);
             });
@@ -2983,9 +3080,11 @@
             const substituteSelect = document.getElementById('substitute-teacher');
             const availableTeachers = teachers.filter(t => !assignedIds.includes(t.teacherId));
             substituteSelect.innerHTML = '<option value="">เลือกครู</option>' +
-                availableTeachers.map(teacher =>
-                    `<option value="${teacher.teacherId}">${teacher.name} - ${teacher.position} (คะแนนคิว: ${teacher.queueScore})</option>`
-                ).join('');
+                availableTeachers.map(teacher => {
+                    const scoreLabel = currentEventQueueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน';
+                    const scoreValue = getTeacherQueueScore(teacher, currentEventQueueType);
+                    return `<option value="${teacher.teacherId}">${teacher.name} - ${teacher.position} (${scoreLabel}: ${scoreValue})</option>`;
+                }).join('');
 
             document.getElementById('substitution-modal').classList.add('show');
         }
@@ -3010,26 +3109,52 @@
 
         function adjustQueueScore(teacherId) {
             const teacher = getTeacherById(teacherId);
-            const newScore = prompt(`ปรับคะแนนคิวสำหรับ ${teacher.name}\nคะแนนปัจจุบัน: ${teacher.queueScore}`, teacher.queueScore);
-
-            if (newScore !== null && !isNaN(newScore)) {
-                const reason = prompt('กรุณาระบุเหตุผลการปรับแก้ไข (บังคับ):');
-                if (reason && reason.trim()) {
-                    const oldScore = teacher.queueScore;
-                    teacher.queueScore = parseInt(newScore);
-                    
-                    addActivityLog(
-                        'manual-edit',
-                        `ปรับคะแนนคิวของ ${teacher.name}`,
-                        `จาก ${oldScore} เป็น ${newScore} | เหตุผล: ${reason}`
-                    );
-                    
-                    saveData();
-                    renderTeachersTable();
-                } else {
-                    alert('กรุณาระบุเหตุผลการปรับแก้ไข');
-                }
+            if (!teacher) {
+                alert('ไม่พบข้อมูลครูที่ต้องการปรับคะแนน');
+                return;
             }
+
+            const typeInput = prompt('ต้องการปรับคะแนนประเภทใด? พิมพ์ "งาน" สำหรับออกงาน หรือ "อบรม" สำหรับอบรม', 'งาน');
+            if (!typeInput) {
+                return;
+            }
+
+            const normalized = typeInput.trim().toLowerCase();
+            const queueType = normalized === 'อบรม' || normalized === 'training'
+                ? QUEUE_TYPES.TRAINING
+                : QUEUE_TYPES.DUTY;
+
+            const label = queueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน';
+            const currentScore = getTeacherQueueScore(teacher, queueType);
+            const newScoreInput = prompt(`ปรับ${label}สำหรับ ${teacher.name}\nคะแนนปัจจุบัน: ${currentScore}`, currentScore);
+
+            if (newScoreInput === null || newScoreInput === '') {
+                return;
+            }
+
+            const parsedScore = parseInt(newScoreInput, 10);
+            if (Number.isNaN(parsedScore)) {
+                alert('กรุณากรอกตัวเลขสำหรับคะแนนใหม่');
+                return;
+            }
+
+            const reason = prompt('กรุณาระบุเหตุผลการปรับแก้ไข (บังคับ):');
+            if (!reason || !reason.trim()) {
+                alert('กรุณาระบุเหตุผลการปรับแก้ไข');
+                return;
+            }
+
+            const oldScore = currentScore;
+            setTeacherQueueScore(teacher, queueType, parsedScore);
+
+            addActivityLog(
+                'manual-edit',
+                `ปรับ${label}ของ ${teacher.name}`,
+                `จาก ${oldScore} เป็น ${parsedScore} | เหตุผล: ${reason}`
+            );
+
+            saveData();
+            renderTeachersTable();
         }
 
         function deleteQueueItem(itemId, queueType = QUEUE_TYPES.DUTY) {
@@ -3123,7 +3248,7 @@
             addActivityLog(
                 'teacher-delete',
                 `ลบข้อมูลครู "${teacher.name}"`,
-                `ตำแหน่ง: ${teacher.position || '-'} | คะแนนคิวล่าสุด: ${teacher.queueScore ?? '-'}`
+                `ตำแหน่ง: ${teacher.position || '-'} | คะแนนออกงานล่าสุด: ${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)} | คะแนนอบรมล่าสุด: ${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}`
             );
 
             if (selectedTeacherId === teacherId) {
@@ -3278,8 +3403,10 @@
                 const teacherData = {
                     name: safeValue('teacher-name'),
                     position: safeValue('teacher-position'),
-                    queueScore: parseInt(safeValue('teacher-queue-score')) || 0
+                    dutyQueueScore: parseInt(safeValue('teacher-duty-queue-score')) || 0,
+                    trainingQueueScore: parseInt(safeValue('teacher-training-queue-score')) || 0
                 };
+                teacherData.queueScore = teacherData.dutyQueueScore;
 
                 if (currentTeacherId) {
                     const teacher = getTeacherById(currentTeacherId);
@@ -3289,12 +3416,13 @@
                     addActivityLog(
                         'manual-edit',
                         `แก้ไขข้อมูลครู "${teacherData.name}"`,
-                        `ตำแหน่ง: ${teacherData.position} | คะแนนคิว: ${teacherData.queueScore}`
+                        `ตำแหน่ง: ${teacherData.position} | คะแนนออกงาน: ${teacherData.dutyQueueScore} | คะแนนอบรม: ${teacherData.trainingQueueScore}`
                     );
                 } else {
                     const newTeacher = {
                         teacherId: Math.max(...teachers.map(t => t.teacherId), 0) + 1,
                         ...teacherData,
+                        queueScore: teacherData.dutyQueueScore,
                         totalDuties: 0,
                         swapCount: 0,
                         dutyDuties: 0,
@@ -3310,7 +3438,7 @@
                     addActivityLog(
                         'manual-edit',
                         `เพิ่มครูใหม่ "${teacherData.name}"`,
-                        `ตำแหน่ง: ${teacherData.position} | คะแนนคิวเริ่มต้น: ${teacherData.queueScore}`
+                        `ตำแหน่ง: ${teacherData.position} | คะแนนออกงานเริ่มต้น: ${teacherData.dutyQueueScore} | คะแนนอบรมเริ่มต้น: ${teacherData.trainingQueueScore}`
                     );
                 }
 
@@ -3382,9 +3510,9 @@
             substituteTeacher.totalDuties = (substituteTeacher.dutyDuties || 0) + (substituteTeacher.trainingDuties || 0);
             substituteTeacher.swapCount = (substituteTeacher.dutySwapCount || 0) + (substituteTeacher.trainingSwapCount || 0);
             if (isSwap) {
-                substituteTeacher.queueScore += 25; // เพิ่มคะแนนเฉพาะกรณีแลกสลับ
+                adjustTeacherQueueScore(substituteTeacher, currentEventQueueType, 25);
             }
-            substituteTeacher.lastEventDate = normalizeDateString(event.date);
+            substituteTeacher.lastEventDate = latestDateString(substituteTeacher.lastDutyDate, substituteTeacher.lastTrainingDate);
 
             const logType = currentEventQueueType === QUEUE_TYPES.TRAINING ? 'training-substitution' : 'substitution';
             const substitutionLabel = isSwap ? 'แลกสลับ' : 'แทน';
