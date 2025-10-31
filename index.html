@@ -736,6 +736,24 @@
      <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="closeTrainingModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
      </div>
     </form>
+  </div>
+ </div>
+  <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
+   <div class="text-center">
+    <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
+   </div>
+  </div>
+  <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
+   <div class="text-center">
+    <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
    </div>
   </div>
   <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
@@ -2041,6 +2059,7 @@
                                     <p class="flex items-center"><span class="mr-2">⏰</span>${tr.time}</p>
                                     <p class="flex items-center"><span class="mr-2">📍</span>${tr.location}</p>
                                 </div>
+                                ${callToAction}
                             </div>
                             <div class="text-right">
                                 <span class="status-badge ${statusClass} flex items-center">
@@ -2388,6 +2407,8 @@
             }
 
             modal.classList.add('show');
+
+            setTimeout(() => prepareLocationPicker(targetEvent), 120);
         }
 
         function closeEventModal() {
@@ -3165,6 +3186,16 @@
                 });
             }
         }
+
+        window.initMap = function() {
+            mapsApiReady = true;
+            initializeLocationMap();
+
+            if (pendingLocationEvent) {
+                prepareLocationPicker(pendingLocationEvent);
+                pendingLocationEvent = null;
+            }
+        };
 
         // Initialize application
         document.addEventListener('DOMContentLoaded', async function() {
