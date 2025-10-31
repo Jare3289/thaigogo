@@ -1780,6 +1780,10 @@
                     ? '<span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-[#E1B1C1] text-[#5b2d38] mb-2">คิวอบรม</span>'
                     : '<span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-[#C4E9F8] text-[#245f7a] mb-2">คิวออกงาน</span>';
 
+                const assignmentSlots = getEventAssignmentSlots(event);
+                const currentAssignments = assignmentSlots.filter(slot => slot.currentTeacherId !== null && slot.currentTeacherId !== undefined);
+                const assignedCount = currentAssignments.length;
+
                 return `
                     <div class="card p-6 hover:shadow-lg transition-all duration-300">
                         <div class="flex justify-between items-start mb-4">
@@ -2247,6 +2251,8 @@
             }
 
             modal.classList.add('show');
+
+            setTimeout(() => prepareLocationPicker(targetEvent), 120);
         }
 
         function closeEventModal() {
@@ -2807,6 +2813,16 @@
                 });
             }
         }
+
+        window.initMap = function() {
+            mapsApiReady = true;
+            initializeLocationMap();
+
+            if (pendingLocationEvent) {
+                prepareLocationPicker(pendingLocationEvent);
+                pendingLocationEvent = null;
+            }
+        };
 
         // Initialize application
         document.addEventListener('DOMContentLoaded', async function() {
