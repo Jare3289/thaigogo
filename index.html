@@ -142,6 +142,20 @@
         .btn-success:hover {
             background: var(--warning-color);
         }
+
+        .btn-delete {
+            background: #f87171;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-delete:hover {
+            background: #ef4444;
+        }
         
         .table {
             width: 100%;
@@ -711,6 +725,19 @@
      </div>
      <div class="form-group"><label class="form-label">ครูที่จะมาแทน</label> <select id="substitute-teacher" class="form-input" required> <option value="">เลือกครู</option> </select>
      </div>
+     <div class="form-group">
+      <label class="form-label">รูปแบบการแทน</label>
+      <div class="space-y-2">
+       <label class="flex items-center gap-2 text-sm text-gray-700">
+        <input type="radio" name="substitution-type" value="replacement" checked>
+        <span>แทน (ไม่เพิ่มคะแนนผู้ไปแทน)</span>
+       </label>
+       <label class="flex items-center gap-2 text-sm text-gray-700">
+        <input type="radio" name="substitution-type" value="swap">
+        <span>แลกสลับ (เพิ่มคะแนนผู้ที่ไปแทน)</span>
+       </label>
+      </div>
+     </div>
      <div class="form-group"><label class="form-label">เหตุผลการแทน (บังคับ)</label> <textarea id="substitution-reason" class="form-input" rows="3" required placeholder="กรุณาระบุเหตุผลการแทนบุคลากร"></textarea>
      </div>
      <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="closeSubstitutionModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-danger"> ยืนยันการแทน </button>
@@ -748,6 +775,15 @@
     </form>
   </div>
  </div>
+  <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
+   <div class="text-center">
+    <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
+   </div>
+  </div>
   <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
    <div class="text-center">
     <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -839,6 +875,13 @@
             TRAINING: 'training'
         });
         window.QUEUE_TYPES = QUEUE_TYPES;
+
+        const SUBSTITUTION_TYPES = Object.freeze({
+            NONE: 'none',
+            REPLACEMENT: 'replacement',
+            SWAP: 'swap'
+        });
+        window.SUBSTITUTION_TYPES = SUBSTITUTION_TYPES;
 
         // Data structures
         let systemConfig = { ...defaultConfig };
@@ -1044,7 +1087,8 @@
                     return {
                         originalTeacherId: normalizedId,
                         currentTeacherId: normalizedId,
-                        substituteTeacherId: null
+                        substituteTeacherId: null,
+                        substitutionType: SUBSTITUTION_TYPES.NONE
                     };
                 });
         }
@@ -1060,10 +1104,13 @@
                 event.assignmentSlots = event.assignmentSlots.map(slot => {
                     const originalId = normalizeTeacherId(slot.originalTeacherId ?? slot.teacherId ?? slot.currentTeacherId ?? null);
                     const currentId = normalizeTeacherId(slot.currentTeacherId ?? slot.substituteTeacherId ?? originalId);
+                    const substituted = originalId && currentId && originalId !== currentId;
+                    const slotType = slot.substitutionType || (substituted ? SUBSTITUTION_TYPES.REPLACEMENT : SUBSTITUTION_TYPES.NONE);
                     return {
                         originalTeacherId: originalId,
                         currentTeacherId: currentId,
-                        substituteTeacherId: currentId && originalId && currentId !== originalId ? currentId : null
+                        substituteTeacherId: substituted ? currentId : null,
+                        substitutionType: substituted ? slotType : SUBSTITUTION_TYPES.NONE
                     };
                 });
             }
@@ -1376,7 +1423,7 @@
         }
 
         function createDefaultTrainings() {
-            return [
+            const defaults = [
                 {
                     trainingId: 1,
                     trainingName: 'อบรม Active Learning สำหรับครูไทย',
@@ -1391,6 +1438,9 @@
                     status: 'pending'
                 }
             ];
+
+            defaults.forEach(event => ensureEventAssignments(event));
+            return defaults;
         }
 
         function updateSystemLabels() {
@@ -2074,16 +2124,23 @@
                                         const currentTeacher = getTeacherById(slot.currentTeacherId);
                                         const originalTeacher = slot.originalTeacherId ? getTeacherById(slot.originalTeacherId) : null;
                                         const isSubstituted = slot.originalTeacherId && slot.currentTeacherId && slot.originalTeacherId !== slot.currentTeacherId;
+                                        const substitutionType = slot.substitutionType || (isSubstituted ? SUBSTITUTION_TYPES.REPLACEMENT : SUBSTITUTION_TYPES.NONE);
                                         const currentName = currentTeacher ? currentTeacher.name : 'ไม่พบข้อมูล';
                                         const originalName = originalTeacher ? originalTeacher.name : 'ไม่ทราบ';
+                                        let detailHtml = '<p class="text-xs text-gray-500">คิวเดิม</p>';
+                                        if (isSubstituted) {
+                                            if (substitutionType === SUBSTITUTION_TYPES.SWAP) {
+                                                detailHtml = `<p class="text-xs text-[#21510A] font-semibold">แลกกับ ${originalName}</p>`;
+                                            } else {
+                                                detailHtml = `<p class="text-xs text-[#894D5B] font-medium">แทนคิวของ ${originalName}</p>`;
+                                            }
+                                        }
                                         return `
                                             <div class="flex items-center bg-gray-50 p-2 rounded-lg border ${isSubstituted ? 'border-[#E1B1C1]' : 'border-transparent'}">
                                                 ${createTeacherAvatar(currentTeacher)}
                                                 <div class="ml-2">
                                                     <p class="font-medium text-gray-800 text-sm">${currentName}</p>
-                                                    ${isSubstituted
-                                                        ? `<p class="text-xs text-[#894D5B] font-medium">แทนคิวของ ${originalName}</p>`
-                                                        : `<p class="text-xs text-gray-500">คิวเดิม</p>`}
+                                                    ${detailHtml}
                                                     <div class="queue-score text-xs mt-1">คะแนนคิว ${currentTeacher && typeof currentTeacher.queueScore === 'number' ? currentTeacher.queueScore : '-'}</div>
                                                 </div>
                                             </div>
@@ -2097,18 +2154,21 @@
                             </div>
                         `}
 
-                        <div class="flex space-x-2">
-                            <button onclick="editEvent(${event.eventId}, '${queueType}')" class="btn-primary text-sm flex-1">
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="editEvent(${event.eventId}, '${queueType}')" class="btn-primary text-sm flex-1 min-w-[140px]">
                                 <span class="mr-1">✏️</span>แก้ไข
                             </button>
                             ${event.status === 'pending'
-                                ? `<button onclick="openAutoAssignModal(${event.eventId}, '${queueType}')" class="btn-success text-sm flex-1">
+                                ? `<button onclick="openAutoAssignModal(${event.eventId}, '${queueType}')" class="btn-success text-sm flex-1 min-w-[140px]">
                                     <span class="mr-1">🎯</span>จัดคิว
                                 </button>`
-                                : `<button onclick="openSubstitutionModal(${event.eventId}, '${queueType}')" class="btn-danger text-sm flex-1">
+                                : `<button onclick="openSubstitutionModal(${event.eventId}, '${queueType}')" class="btn-danger text-sm flex-1 min-w-[140px]">
                                     <span class="mr-1">🔄</span>แทน
                                 </button>`
                             }
+                            <button onclick="deleteQueueItem(${event.eventId}, '${queueType}')" class="btn-delete text-sm flex-1 min-w-[140px]">
+                                <span class="mr-1">🗑️</span>ลบ
+                            </button>
                         </div>
                     </div>
                 `;
@@ -2182,11 +2242,12 @@
                             </div>
                         `}
 
-                        <div class="flex space-x-2">
-                            <button onclick="editTraining(${tr.trainingId})" class="btn-primary text-sm flex-1"><span class="mr-1">✏️</span>แก้ไข</button>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="editTraining(${tr.trainingId})" class="btn-primary text-sm flex-1 min-w-[140px]"><span class="mr-1">✏️</span>แก้ไข</button>
                             ${tr.status === 'pending'
-                                ? `<button onclick="openTrainingAutoAssignModal(${tr.trainingId})" class="btn-success text-sm flex-1"><span class="mr-1">🎯</span>จัดคิว</button>`
-                                : `<button onclick="openTrainingSubstitutionModal(${tr.trainingId})" class="btn-danger text-sm flex-1"><span class="mr-1">🔄</span>แทน</button>`}
+                                ? `<button onclick="openTrainingAutoAssignModal(${tr.trainingId})" class='btn-success text-sm flex-1 min-w-[140px]'><span class="mr-1">🎯</span>จัดคิว</button>`
+                                : `<button onclick="openTrainingSubstitutionModal(${tr.trainingId})" class='btn-danger text-sm flex-1 min-w-[140px]'><span class="mr-1">🔄</span>แทน</button>`}
+                            <button onclick="deleteQueueItem(${tr.trainingId}, '${QUEUE_TYPES.TRAINING}')" class="btn-delete text-sm flex-1 min-w-[140px]"><span class="mr-1">🗑️</span>ลบ</button>
                         </div>
                     </div>
                 `;
@@ -2345,6 +2406,9 @@
                     </button>
                     <button class="btn-success flex-1" onclick="adjustQueueScore(${teacher.teacherId})">
                         <span class="mr-1">⚖️</span>ปรับคะแนนคิว
+                    </button>
+                    <button class="btn-delete flex-1" onclick="deleteTeacher(${teacher.teacherId})">
+                        <span class="mr-1">🗑️</span>ลบครู
                     </button>
                 </div>
             `;
@@ -2869,15 +2933,22 @@
                             const currentTeacher = getTeacherById(slot.currentTeacherId);
                             const originalTeacher = slot.originalTeacherId ? getTeacherById(slot.originalTeacherId) : null;
                             const isSubstituted = slot.originalTeacherId && slot.currentTeacherId && slot.originalTeacherId !== slot.currentTeacherId;
+                            const substitutionType = slot.substitutionType || (isSubstituted ? SUBSTITUTION_TYPES.REPLACEMENT : SUBSTITUTION_TYPES.NONE);
+                            let detailHtml = '<p class="text-xs text-gray-500">คิวเดิม</p>';
+                            if (isSubstituted) {
+                                if (substitutionType === SUBSTITUTION_TYPES.SWAP) {
+                                    detailHtml = `<p class=\"text-xs text-[#21510A]\">แลกกับ ${originalTeacher ? originalTeacher.name : 'ไม่ระบุ'}</p>`;
+                                } else {
+                                    detailHtml = `<p class=\"text-xs text-[#894D5B]\">แทนคิวของ ${originalTeacher ? originalTeacher.name : 'ไม่ระบุ'}</p>`;
+                                }
+                            }
                             return `
                                 <div class="flex items-center justify-between bg-white px-3 py-2 rounded-lg border ${isSubstituted ? 'border-[#E1B1C1]' : 'border-gray-200'}">
                                     <div class="flex items-center">
                                         ${createTeacherAvatar(currentTeacher)}
                                         <div class="ml-2">
                                             <p class="text-sm font-medium text-gray-800">${currentTeacher ? currentTeacher.name : 'ไม่พบข้อมูล'}</p>
-                                            ${isSubstituted
-                                                ? `<p class="text-xs text-[#894D5B]">แทนคิวของ ${originalTeacher ? originalTeacher.name : 'ไม่ระบุ'}</p>`
-                                                : '<p class="text-xs text-gray-500">คิวเดิม</p>'}
+                                            ${detailHtml}
                                         </div>
                                     </div>
                                     <span class="text-xs text-gray-500">คิวที่ ${index + 1}</span>
@@ -2940,7 +3011,7 @@
         function adjustQueueScore(teacherId) {
             const teacher = getTeacherById(teacherId);
             const newScore = prompt(`ปรับคะแนนคิวสำหรับ ${teacher.name}\nคะแนนปัจจุบัน: ${teacher.queueScore}`, teacher.queueScore);
-            
+
             if (newScore !== null && !isNaN(newScore)) {
                 const reason = prompt('กรุณาระบุเหตุผลการปรับแก้ไข (บังคับ):');
                 if (reason && reason.trim()) {
@@ -2959,6 +3030,111 @@
                     alert('กรุณาระบุเหตุผลการปรับแก้ไข');
                 }
             }
+        }
+
+        function deleteQueueItem(itemId, queueType = QUEUE_TYPES.DUTY) {
+            const collection = [...getQueueEvents(queueType)];
+            const key = queueType === QUEUE_TYPES.TRAINING ? 'trainingId' : 'eventId';
+            const index = collection.findIndex(item => Number(item[key]) === Number(itemId));
+
+            if (index === -1) {
+                alert(`ไม่พบ${getQueueDisplayName(queueType)}ที่ต้องการลบ`);
+                return;
+            }
+
+            const item = collection[index];
+            const itemName = getQueueItemName(item, queueType) || `${getQueueDisplayName(queueType)} #${itemId}`;
+            if (!confirm(`ต้องการลบ${getQueueDisplayName(queueType)} "${itemName}" หรือไม่?`)) {
+                return;
+            }
+
+            collection.splice(index, 1);
+            setQueueEvents(queueType, collection);
+
+            const logType = queueType === QUEUE_TYPES.TRAINING ? 'training-delete' : 'event-delete';
+            const scheduleInfo = item.date ? `วันที่: ${formatDateThai(item.date)}` : 'ไม่มีข้อมูลวันเวลา';
+            addActivityLog(
+                logType,
+                `ลบ${getQueueDisplayName(queueType)} "${itemName}"`,
+                `${scheduleInfo} | สถานที่: ${item.location || '-'}`
+            );
+
+            if (currentEventQueueType === queueType && currentEventId === itemId) {
+                currentEventId = null;
+            }
+            if (queueType === QUEUE_TYPES.TRAINING && currentTrainingId === itemId) {
+                currentTrainingId = null;
+            }
+
+            saveData();
+            showView(getQueueView(queueType));
+        }
+
+        function deleteTeacher(teacherId) {
+            const teacher = getTeacherById(teacherId);
+            if (!teacher) {
+                alert('ไม่พบข้อมูลครูที่ต้องการลบ');
+                return;
+            }
+
+            if (!confirm(`ต้องการลบข้อมูลครู "${teacher.name}" หรือไม่?`)) {
+                return;
+            }
+
+            teachers = teachers.filter(t => t.teacherId !== teacherId);
+
+            const cleanupAssignments = (eventList) => {
+                eventList.forEach(event => {
+                    const slots = getEventAssignmentSlots(event);
+                    event.assignmentSlots = slots.map(slot => {
+                        if (!slot) {
+                            return slot;
+                        }
+                        const updatedSlot = { ...slot };
+                        let slotChanged = false;
+                        if (updatedSlot.originalTeacherId === teacherId) {
+                            updatedSlot.originalTeacherId = null;
+                            slotChanged = true;
+                        }
+                        if (updatedSlot.currentTeacherId === teacherId) {
+                            updatedSlot.currentTeacherId = null;
+                            slotChanged = true;
+                        }
+                        if (updatedSlot.substituteTeacherId === teacherId) {
+                            updatedSlot.substituteTeacherId = null;
+                            slotChanged = true;
+                        }
+                        if (slotChanged) {
+                            updatedSlot.substitutionType = SUBSTITUTION_TYPES.NONE;
+                        }
+                        return updatedSlot;
+                    });
+
+                    ensureEventAssignments(event);
+                    if (event.assignedTeachers.length === 0) {
+                        event.status = 'pending';
+                    }
+                });
+            };
+
+            cleanupAssignments(events);
+            cleanupAssignments(trainings);
+
+            addActivityLog(
+                'teacher-delete',
+                `ลบข้อมูลครู "${teacher.name}"`,
+                `ตำแหน่ง: ${teacher.position || '-'} | คะแนนคิวล่าสุด: ${teacher.queueScore ?? '-'}`
+            );
+
+            if (selectedTeacherId === teacherId) {
+                selectedTeacherId = teachers.length ? teachers[0].teacherId : null;
+            }
+            if (currentTeacherId === teacherId) {
+                currentTeacherId = null;
+            }
+
+            saveData();
+            showView('teachers');
         }
 
         // Form submissions
@@ -3153,6 +3329,8 @@
             const originalTeacherId = parseInt(document.getElementById('original-teacher').value);
             const substituteTeacherId = parseInt(document.getElementById('substitute-teacher').value);
             const reason = document.getElementById('substitution-reason').value;
+            const substitutionType = (document.querySelector('input[name="substitution-type"]:checked') || {}).value || SUBSTITUTION_TYPES.REPLACEMENT;
+            const isSwap = substitutionType === SUBSTITUTION_TYPES.SWAP;
 
             if (!originalTeacherId || !substituteTeacherId || !reason.trim()) {
                 alert('กรุณากรอกข้อมูลให้ครบถ้วน');
@@ -3185,6 +3363,7 @@
                 }
                 slot.currentTeacherId = substituteTeacherId;
                 slot.substituteTeacherId = substituteTeacherId;
+                slot.substitutionType = isSwap ? SUBSTITUTION_TYPES.SWAP : SUBSTITUTION_TYPES.REPLACEMENT;
             }
 
             ensureEventAssignments(event);
@@ -3202,14 +3381,17 @@
             }
             substituteTeacher.totalDuties = (substituteTeacher.dutyDuties || 0) + (substituteTeacher.trainingDuties || 0);
             substituteTeacher.swapCount = (substituteTeacher.dutySwapCount || 0) + (substituteTeacher.trainingSwapCount || 0);
-            substituteTeacher.queueScore += 25; // เพิ่มคะแนน 25 เมื่อแทนเพื่อนร่วมงาน
+            if (isSwap) {
+                substituteTeacher.queueScore += 25; // เพิ่มคะแนนเฉพาะกรณีแลกสลับ
+            }
             substituteTeacher.lastEventDate = normalizeDateString(event.date);
 
             const logType = currentEventQueueType === QUEUE_TYPES.TRAINING ? 'training-substitution' : 'substitution';
+            const substitutionLabel = isSwap ? 'แลกสลับ' : 'แทน';
             addActivityLog(
                 logType,
-                `แทนบุคลากรใน${getQueueDisplayName(currentEventQueueType)} "${getQueueItemName(event, currentEventQueueType)}"`,
-                `คิวเดิม: ${queueTeacher ? queueTeacher.name : 'ไม่ระบุ'} | ผู้มอบหมายล่าสุด: ${currentAssignedTeacher ? currentAssignedTeacher.name : 'ไม่พบข้อมูล'} | ผู้ปฏิบัติจริง: ${substituteTeacher ? substituteTeacher.name : 'ไม่พบข้อมูล'} | เหตุผล: ${reason}`
+                `${substitutionLabel}บุคลากรใน${getQueueDisplayName(currentEventQueueType)} "${getQueueItemName(event, currentEventQueueType)}"`,
+                `รูปแบบ: ${substitutionLabel} | คิวเดิม: ${queueTeacher ? queueTeacher.name : 'ไม่ระบุ'} | ผู้มอบหมายล่าสุด: ${currentAssignedTeacher ? currentAssignedTeacher.name : 'ไม่พบข้อมูล'} | ผู้ปฏิบัติจริง: ${substituteTeacher ? substituteTeacher.name : 'ไม่พบข้อมูล'} | เหตุผล: ${reason}`
             );
 
             saveData();
