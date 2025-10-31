@@ -37,6 +37,19 @@
             gap: 1.5rem;
         }
 
+        .status-banner {
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.95rem;
+        }
+
+        .status-banner svg {
+            flex-shrink: 0;
+        }
+
         .nav-list {
             display: flex;
             flex-wrap: wrap;
@@ -420,6 +433,7 @@
     </div>
    </div><!-- Main Content -->
    <div class="flex-1 overflow-auto" style="background: var(--surface-muted);"><!-- Dashboard View -->
+    <div id="firebase-status-banner" class="hidden mx-auto mt-4 mb-2 w-full max-w-6xl"></div>
     <div id="dashboard-view" class="view">
      <div class="view-container">
       <h2 class="text-2xl font-bold text-gray-800">หน้าหลัก - ภาพรวมระบบ</h2><!-- Next Queue Section - แนวนอนที่บนสุด -->
@@ -772,6 +786,7 @@
                 window.__rejectFirebaseReady = null;
             }
             console.error('Firebase initialization failed:', error);
+            showFirebaseStatus('error', `Firebase เริ่มต้นไม่สำเร็จ: ${extractFirebaseMessage(error)}`, true);
         };
 
         // Default configuration
@@ -1077,6 +1092,110 @@
             }
         }
 
+        let firebaseStatusTimeout = null;
+        let firebaseWriteErrorNotified = false;
+
+        function clearFirebaseStatus() {
+            const banner = document.getElementById('firebase-status-banner');
+            if (!banner) {
+                return;
+            }
+            banner.classList.add('hidden');
+            banner.innerHTML = '';
+            if (firebaseStatusTimeout) {
+                clearTimeout(firebaseStatusTimeout);
+                firebaseStatusTimeout = null;
+            }
+        }
+
+        function getFirebaseStatusTemplate(type = 'info') {
+            const styles = {
+                success: {
+                    background: 'rgba(136, 168, 42, 0.15)',
+                    border: '#88A82A',
+                    text: '#21510A',
+                    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+                },
+                warning: {
+                    background: 'rgba(196, 233, 248, 0.25)',
+                    border: '#55a6c7',
+                    text: '#245f7a',
+                    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+                },
+                error: {
+                    background: 'rgba(137, 77, 91, 0.15)',
+                    border: '#894D5B',
+                    text: '#5b2d38',
+                    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6.938 4.938l10.124 10.124M17.062 4.938L6.938 15.062"/></svg>'
+                },
+                info: {
+                    background: 'rgba(196, 233, 248, 0.4)',
+                    border: '#55a6c7',
+                    text: '#245f7a',
+                    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+                }
+            };
+            return styles[type] || styles.info;
+        }
+
+        function showFirebaseStatus(type = 'info', message = '', sticky = false) {
+            const banner = document.getElementById('firebase-status-banner');
+            if (!banner || !message) {
+                clearFirebaseStatus();
+                return;
+            }
+
+            const template = getFirebaseStatusTemplate(type);
+            banner.innerHTML = `
+                <div class="status-banner" style="background:${template.background}; color:${template.text}; border:1px solid ${template.border};">
+                    ${template.icon}
+                    <span>${message}</span>
+                </div>
+            `;
+            banner.classList.remove('hidden');
+
+            if (!sticky) {
+                if (firebaseStatusTimeout) {
+                    clearTimeout(firebaseStatusTimeout);
+                }
+                firebaseStatusTimeout = setTimeout(() => {
+                    clearFirebaseStatus();
+                }, 6000);
+            }
+        }
+
+        function notifyFirebaseWriteFailure(error) {
+            if (firebaseWriteErrorNotified) {
+                return;
+            }
+            firebaseWriteErrorNotified = true;
+            const message = `ไม่สามารถบันทึกข้อมูลไปยัง Cloud Firestore: ${extractFirebaseMessage(error)}`;
+            showFirebaseStatus('warning', message, true);
+        }
+
+        function extractFirebaseMessage(error) {
+            if (!error) {
+                return 'ไม่ทราบสาเหตุ';
+            }
+            if (typeof error === 'string') {
+                return error;
+            }
+            if (error.message) {
+                return error.message;
+            }
+            if (error.statusText) {
+                return error.statusText;
+            }
+            if (error.code) {
+                return error.code;
+            }
+            try {
+                return JSON.stringify(error);
+            } catch (serializationError) {
+                return 'ไม่ทราบสาเหตุ';
+            }
+        }
+
         function createDefaultTeachers() {
             const baseTeachers = [
                 { teacherId: 1, name: 'พรรวินท์', position: 'ครูชำนาญการ', totalDuties: 2, queueScore: 30, swapCount: 0, lastEventDate: '2024-07-07' },
@@ -1307,14 +1426,17 @@
             }
 
             await Promise.all(tasks);
+            firebaseWriteErrorNotified = false;
         }
 
         function persistAllData() {
             const payload = buildPersistPayload();
             if (canUseDirectFirebase()) {
-                return persistAllDataDirect(payload).catch(error => {
-                    console.error('ไม่สามารถบันทึกข้อมูลไปยัง Firebase โดยตรง:', error);
-                });
+                return persistAllDataDirect(payload)
+                    .catch(error => {
+                        console.error('ไม่สามารถบันทึกข้อมูลไปยัง Firebase โดยตรง:', error);
+                        notifyFirebaseWriteFailure(error);
+                    });
             }
 
             return Promise.resolve();
@@ -1353,6 +1475,7 @@
 
         async function loadInitialData() {
             toggleLoadingOverlay(true);
+            let usedFallbackData = false;
 
             if (window.firebaseReadyPromise) {
                 try {
@@ -1362,26 +1485,37 @@
                     ]);
                 } catch (error) {
                     console.error('Firebase initialization error:', error);
+                    showFirebaseStatus('error', `เริ่มต้น Firebase ไม่สำเร็จ: ${extractFirebaseMessage(error)}`, true);
                 }
             }
 
-            if (canUseDirectFirebase()) {
-                try {
-                    const data = await fetchInitialDataDirect();
-                    firebaseDataLoaded = true;
-                    applyInitialData(data || {});
-                } catch (error) {
-                    console.error('ไม่สามารถโหลดข้อมูลจาก Firebase โดยตรง:', error);
+            try {
+                if (canUseDirectFirebase()) {
+                    try {
+                        const data = await fetchInitialDataDirect();
+                        firebaseDataLoaded = true;
+                        applyInitialData(data || {});
+                        showFirebaseStatus('success', 'เชื่อมต่อ Cloud Firestore สำเร็จ');
+                    } catch (error) {
+                        console.error('ไม่สามารถโหลดข้อมูลจาก Firebase โดยตรง:', error);
+                        showFirebaseStatus('error', `ไม่สามารถโหลดข้อมูลจาก Cloud Firestore: ${extractFirebaseMessage(error)}`, true);
+                        applyInitialData({});
+                        usedFallbackData = true;
+                    }
+                } else {
                     applyInitialData({});
+                    usedFallbackData = true;
                 }
-            } else {
-                applyInitialData({});
-            }
+            } finally {
+                if (usedFallbackData && !firebaseDataLoaded) {
+                    showFirebaseStatus('info', 'กำลังใช้ข้อมูลตัวอย่างภายในเครื่อง (เชื่อมต่อ Cloud Firestore ไม่สำเร็จ)', true);
+                }
 
-            dataInitialized = true;
-            renderAllViews();
-            showView('dashboard');
-            toggleLoadingOverlay(false);
+                dataInitialized = true;
+                renderAllViews();
+                showView('dashboard');
+                toggleLoadingOverlay(false);
+            }
 
             if (!firebaseDataLoaded && window.firebaseReadyPromise) {
                 window.firebaseReadyPromise
@@ -1392,11 +1526,18 @@
                                     firebaseDataLoaded = true;
                                     applyInitialData(data || {});
                                     renderAllViews();
+                                    showFirebaseStatus('success', 'เชื่อมต่อ Cloud Firestore สำเร็จ');
                                 })
-                                .catch(error => console.error('ไม่สามารถซิงค์ข้อมูลจาก Firebase หลังการเริ่มต้น:', error));
+                                .catch(error => {
+                                    console.error('ไม่สามารถซิงค์ข้อมูลจาก Firebase หลังการเริ่มต้น:', error);
+                                    showFirebaseStatus('error', `ไม่สามารถซิงค์ข้อมูลจาก Cloud Firestore: ${extractFirebaseMessage(error)}`, true);
+                                });
                         }
                     })
-                    .catch(() => {});
+                    .catch(error => {
+                        console.error('Firebase readiness promise rejected:', error);
+                        showFirebaseStatus('error', `Firebase ไม่พร้อมใช้งาน: ${extractFirebaseMessage(error)}`, true);
+                    });
             }
         }
 
@@ -1779,10 +1920,6 @@
                 const queueBadge = queueType === QUEUE_TYPES.TRAINING
                     ? '<span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-[#E1B1C1] text-[#5b2d38] mb-2">คิวอบรม</span>'
                     : '<span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-[#C4E9F8] text-[#245f7a] mb-2">คิวออกงาน</span>';
-
-                const assignmentSlots = getEventAssignmentSlots(event);
-                const currentAssignments = assignmentSlots.filter(slot => slot.currentTeacherId !== null && slot.currentTeacherId !== undefined);
-                const assignedCount = currentAssignments.length;
 
                 return `
                     <div class="card p-6 hover:shadow-lg transition-all duration-300">
