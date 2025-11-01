@@ -917,17 +917,24 @@
     <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
    </div>
   </div>
+  <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
+   <div class="text-center">
+    <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
+   </div>
+  </div>
   <script>
-        // Firebase initialization bridge (shared with module loader)
-        window.firebaseAppConfig = window.firebaseAppConfig || {
-            apiKey: "AIzaSyDv--hw2BWKE-NTFrCMpTNz9LEzGK8l5PE",
-            authDomain: "thaigogo-e9112.firebaseapp.com",
-            databaseURL: "https://thaigogo-e9112-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "thaigogo-e9112",
-            storageBucket: "thaigogo-e9112.firebasestorage.app",
-            messagingSenderId: "820257616141",
-            appId: "1:820257616141:web:c92cf50ae5e05491fb4044",
-            measurementId: "G-4FX435MNDC"
+        window.firebaseAppConfig = {
+            apiKey: "AIzaSyAouBjZHcDpomyZTnb72oGOYckt8t3BYOs",
+            authDomain: "thaievent-7784d.firebaseapp.com",
+            projectId: "thaievent-7784d",
+            storageBucket: "thaievent-7784d.firebasestorage.app",
+            messagingSenderId: "659666756591",
+            appId: "1:659666756591:web:f1cc02a782654c74b14c1a",
+            measurementId: "G-RSQB7Q6G73"
         };
 
         window.firebaseReadyPromise = window.firebaseReadyPromise || new Promise((resolve, reject) => {
@@ -935,14 +942,14 @@
             window.__rejectFirebaseReady = reject;
         });
 
-        window.notifyFirebaseReady = function(app, database, helpers) {
+        window.notifyFirebaseReady = function(app, db, helpers) {
             window.firebaseApp = app;
-            window.firebaseDatabase = database;
+            window.firestoreDb = db;
             if (helpers) {
                 window.firebaseDbApi = helpers;
             }
             if (typeof window.__resolveFirebaseReady === 'function') {
-                window.__resolveFirebaseReady({ app, database });
+                window.__resolveFirebaseReady({ app, db });
                 window.__resolveFirebaseReady = null;
             }
         };
@@ -953,7 +960,9 @@
                 window.__rejectFirebaseReady = null;
             }
             console.error('Firebase initialization failed:', error);
-            showFirebaseStatus('error', `Firebase เริ่มต้นไม่สำเร็จ: ${extractFirebaseMessage(error)}`, true);
+            if (typeof showFirebaseStatus === 'function') {
+                showFirebaseStatus('error', `Firebase เริ่มต้นไม่สำเร็จ: ${extractFirebaseMessage(error)}`, true);
+            }
         };
 
         window.callToAction = window.callToAction || function() { return null; };
@@ -998,18 +1007,14 @@
         let dataInitialized = false;
         let firebaseDataLoaded = false;
 
-        // --- FIX: normalizeDateString (รองรับรูปแบบ 2025-11-01 และ 1/11/2568) ---
         function normalizeDateString(input) {
-            if (!input) {
-                return null;
-            }
+            if (!input) return null;
 
             if (input instanceof Date && !Number.isNaN(input)) {
                 return input.toISOString().slice(0, 10);
             }
 
             const str = String(input).trim();
-
             const direct = new Date(str);
             if (!Number.isNaN(direct.getTime())) {
                 return direct.toISOString().slice(0, 10);
@@ -1026,9 +1031,7 @@
                 let day = parseInt(match[1], 10);
                 let month = parseInt(match[2], 10) - 1;
                 let year = parseInt(match[3], 10);
-                if (year > 2400) {
-                    year -= 543;
-                }
+                if (year > 2400) year -= 543;
                 const parsed = new Date(year, month, day);
                 if (!Number.isNaN(parsed.getTime())) {
                     return parsed.toISOString().slice(0, 10);
@@ -1312,9 +1315,7 @@
         function canUseDirectFirebase() {
             return !!(
                 window.firebaseDbApi &&
-                typeof window.firebaseDbApi.get === 'function' &&
-                typeof window.firebaseDbApi.put === 'function' &&
-                typeof window.firebaseDbApi.patch === 'function'
+                typeof window.firebaseDbApi.get === 'function'
             );
         }
 
@@ -2341,6 +2342,129 @@
             `;
         }
 
+        function highlightNextQueueSelection() {
+            const cards = document.querySelectorAll('.next-queue-card');
+            cards.forEach(card => {
+                const cardTeacherId = parseInt(card.getAttribute('data-teacher-id'), 10);
+                const cardType = card.getAttribute('data-queue-type');
+                if (currentNextQueueSelection && cardTeacherId === currentNextQueueSelection.teacherId && cardType === currentNextQueueSelection.queueType) {
+                    card.classList.add('is-active');
+                } else {
+                    card.classList.remove('is-active');
+                }
+            });
+        }
+
+        function renderNextQueueInsightFromSelection() {
+            if (!currentNextQueueSelection) {
+                renderNextQueueInsight(null, null);
+                return;
+            }
+            const teacher = getTeacherById(currentNextQueueSelection.teacherId);
+            if (!teacher) {
+                currentNextQueueSelection = null;
+                renderNextQueueInsight(null, null);
+                return;
+            }
+            renderNextQueueInsight(teacher, currentNextQueueSelection.queueType);
+        }
+
+        function renderNextQueueInsight(teacher, queueType) {
+            const container = document.getElementById('next-queue-insight');
+            if (!container) {
+                return;
+            }
+
+            if (!teacher || !queueType) {
+                container.classList.add('hidden');
+                container.innerHTML = '';
+                return;
+            }
+
+            ensureTeacherStats(teacher);
+            const queueLabel = queueType === QUEUE_TYPES.TRAINING ? 'คิวอบรม' : 'คิวออกงาน';
+            const queueScore = getTeacherQueueScore(teacher, queueType);
+            const otherScore = getTeacherQueueScore(teacher, queueType === QUEUE_TYPES.TRAINING ? QUEUE_TYPES.DUTY : QUEUE_TYPES.TRAINING);
+            const rankingList = [...teachers].sort((a, b) => compareTeachersForQueue(a, b, queueType));
+            const rankIndex = rankingList.findIndex(item => item.teacherId === teacher.teacherId);
+            const rank = rankIndex >= 0 ? rankIndex + 1 : '-';
+            const totalCount = rankingList.length || '-';
+
+            const lastDutyText = teacher.lastDutyDate ? formatDateThai(teacher.lastDutyDate) : '-';
+            const lastTrainingText = teacher.lastTrainingDate ? formatDateThai(teacher.lastTrainingDate) : '-';
+
+            const relatedEvents = events
+                .filter(event => Array.isArray(event.assignedTeachers) && event.assignedTeachers.includes(teacher.teacherId))
+                .sort((a, b) => (safeDate(b.date) || new Date(0)) - (safeDate(a.date) || new Date(0)))
+                .slice(0, 2);
+
+            const relatedTrainings = trainings
+                .filter(event => Array.isArray(event.assignedTeachers) && event.assignedTeachers.includes(teacher.teacherId))
+                .sort((a, b) => (safeDate(b.startDate || b.date) || new Date(0)) - (safeDate(a.startDate || a.date) || new Date(0)))
+                .slice(0, 2);
+
+            const relatedHtml = queueType === QUEUE_TYPES.TRAINING ? relatedTrainings : relatedEvents;
+            const relatedItemsHtml = relatedHtml.length > 0
+                ? relatedHtml.map(item => {
+                    const isTraining = queueType === QUEUE_TYPES.TRAINING;
+                    const displayName = isTraining ? (item.trainingName || item.eventName) : item.eventName;
+                    const dateDisplay = isTraining
+                        ? formatDateRangeThai(item.startDate || item.date, item.endDate || item.date)
+                        : formatDateThai(item.date);
+                    const statusText = item.status === 'assigned' ? 'จัดคิวแล้ว'
+                        : item.status === 'completed' ? 'เสร็จสิ้น' : 'รอจัดคิว';
+                    return `
+                        <li class="flex justify-between items-center text-xs bg-white border border-gray-200 rounded-lg px-3 py-2">
+                            <div>
+                                <p class="font-semibold text-gray-800">${displayName}</p>
+                                <p class="text-gray-500">${dateDisplay} • ${item.time || '-'}</p>
+                            </div>
+                            <span class="text-[11px] text-gray-500">${statusText}</span>
+                        </li>
+                    `;
+                }).join('')
+                : '<li class="text-xs text-gray-500">ยังไม่มีประวัติที่เกี่ยวข้อง</li>';
+
+            container.classList.remove('hidden');
+            container.innerHTML = `
+                <div class="card p-4">
+                    <div class="flex items-center gap-4">
+                        ${createTeacherAvatar(teacher, true)}
+                        <div class="flex-1">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                    <h4 class="text-lg font-bold text-gray-800">${teacher.name}</h4>
+                                    <p class="text-sm text-gray-600">${teacher.position}</p>
+                                </div>
+                                <span class="px-3 py-1 rounded-full text-xs font-semibold" style="background: rgba(137,77,91,0.1); color:#5b2d38;">${queueLabel} ลำดับ ${rank}/${totalCount}</span>
+                            </div>
+                            <div class="flex flex-wrap gap-2 mt-3">
+                                <span class="queue-score">${queueLabel} ${queueScore}</span>
+                                <span class="queue-score" style="background: rgba(36,95,122,0.1); color:#245f7a;">${queueType === QUEUE_TYPES.TRAINING ? 'คะแนนออกงาน' : 'คะแนนอบรม'} ${otherScore}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 text-sm text-gray-600">
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <p class="font-semibold text-gray-700 mb-1">สถิติรวม</p>
+                            <p>ออกงานทั้งหมด: <strong>${teacher.dutyDuties ?? 0}</strong></p>
+                            <p>อบรมทั้งหมด: <strong>${teacher.trainingDuties ?? 0}</strong></p>
+                            <p>การแทนรวม: <strong>${teacher.swapCount ?? 0}</strong> (งาน ${teacher.dutySwapCount ?? 0} | อบรม ${teacher.trainingSwapCount ?? 0})</p>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <p class="font-semibold text-gray-700 mb-1">ประวัติล่าสุด</p>
+                            <p>ออกงานล่าสุด: <strong>${lastDutyText}</strong></p>
+                            <p>อบรมล่าสุด: <strong>${lastTrainingText}</strong></p>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <p class="text-sm font-semibold text-gray-700 mb-2">ประวัติที่เกี่ยวข้อง (${queueLabel})</p>
+                        <ul class="space-y-2">${relatedItemsHtml}</ul>
+                    </div>
+                </div>
+            `;
+        }
+
             teachers.forEach(teacher => {
                 teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
                 teacher.swapCount = (teacher.dutySwapCount || 0) + (teacher.trainingSwapCount || 0);
@@ -2402,11 +2526,6 @@
             ].join(divider);
             highlightNextQueueSelection();
             renderNextQueueInsightFromSelection();
-
-            // Render next queue split by duty/training rows
-            const dutyQueueTeachers = getNextQueueTeachers(13, QUEUE_TYPES.DUTY);
-            const trainingQueueTeachers = getNextQueueTeachers(13, QUEUE_TYPES.TRAINING);
-            const divider = '<div class="border-t border-dashed border-rose-200 my-4"></div>';
 
             document.getElementById('next-queue').innerHTML = [
                 buildNextQueueSection(QUEUE_TYPES.DUTY, dutyQueueTeachers),
@@ -2677,74 +2796,6 @@
                             <button onclick="deleteQueueItem(${tr.trainingId}, '${QUEUE_TYPES.TRAINING}')" class="btn-delete text-sm flex-1 min-w-[140px]"><span class="mr-1">🗑️</span>ลบ</button>
                         </div>
                     </div>
-                    <div class="mt-3 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
-                        <p><span class="font-medium">💡 คำแนะนำ:</span> เลือกตามคะแนนอบรมต่ำสุดก่อน</p>
-                        <p class="mt-1"><span class="font-medium">เลือกแล้ว:</span> <span id="selected-count">${Math.min(tr.requiredQuota, sortedTeachers.length)}</span>/${tr.requiredQuota} คน</p>
-                    </div>
-                </div>
-            `;
-
-            container.innerHTML = html || '<p class="text-gray-500 text-center py-8">ยังไม่มีข้อมูลการอบรม</p>';
-        }
-
-        // Teachers table rendering
-        function renderTeachersTable() {
-            const tbody = document.getElementById('teachers-table-body');
-            if (!tbody) {
-                return;
-            }
-
-            const sortedTeachers = [...teachers]
-                .map(teacher => {
-                    ensureTeacherStats(teacher);
-                    return teacher;
-                })
-                .sort((a, b) => {
-                    const dutyDiff = getTeacherQueueScore(a, QUEUE_TYPES.DUTY) - getTeacherQueueScore(b, QUEUE_TYPES.DUTY);
-                    if (dutyDiff !== 0) {
-                        return dutyDiff;
-                    }
-                    const trainingDiff = getTeacherQueueScore(a, QUEUE_TYPES.TRAINING) - getTeacherQueueScore(b, QUEUE_TYPES.TRAINING);
-                    if (trainingDiff !== 0) {
-                        return trainingDiff;
-                    }
-                    const dateA = a.lastEventDate ? new Date(a.lastEventDate) : new Date(0);
-                    const dateB = b.lastEventDate ? new Date(b.lastEventDate) : new Date(0);
-                    return dateA - dateB;
-                })
-                .map((teacher, index) => ({ ...teacher, queueRank: index + 1 }));
-
-            if (sortedTeachers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-gray-500">ยังไม่มีข้อมูลครู</td></tr>';
-                renderTeacherDetail(null);
-                return;
-            }
-
-            if (!selectedTeacherId || !sortedTeachers.some(t => t.teacherId === selectedTeacherId)) {
-                selectedTeacherId = sortedTeachers[0].teacherId;
-            }
-
-            tbody.innerHTML = sortedTeachers.map(teacher => {
-                const isActive = teacher.teacherId === selectedTeacherId;
-                return `
-                    <tr class="${isActive ? 'is-active' : ''}" onclick="showTeacherDetail(${teacher.teacherId})">
-                        <td class="font-medium text-gray-700">${teacher.queueRank}</td>
-                        <td>
-                            <div class="flex items-center space-x-3">
-                                ${createTeacherAvatar(teacher)}
-                                <div>
-                                    <p class="font-semibold text-gray-800">${teacher.name}</p>
-                                    ${teacher.lastEventDate ? `<p class="text-xs text-gray-500">ล่าสุด ${formatDateThai(teacher.lastEventDate)}</p>` : ''}
-                                </div>
-                            </div>
-                        </td>
-                        <td class="text-sm text-gray-600">${teacher.position}</td>
-                        <td class="font-semibold text-[#5b2d38]">${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)}</td>
-                        <td class="font-semibold text-[#245f7a]">${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</td>
-                        <td class="text-center">${teacher.dutyDuties ?? 0}</td>
-                        <td class="text-center">${teacher.trainingDuties ?? 0}</td>
-                        <td class="text-center">${teacher.swapCount ?? 0}</td>
-                    </tr>
                 `;
             }).join('');
 
@@ -3314,15 +3365,36 @@
             document.getElementById('auto-assign-modal').classList.add('show');
         }
 
-        function confirmTrainingAutoAssignFromSelection(trainingId) {
-            const selectedCards = document.querySelectorAll('.teacher-select-card.border-green-500');
-            const selectedIds = Array.from(selectedCards).map(card => parseInt(card.getAttribute('data-teacher-id')));
-            const tr = trainings.find(t => t.trainingId === trainingId);
-
-            if (!tr) {
-                alert('ไม่พบข้อมูลอบรมที่เลือก');
-                return;
+        function toggleTeacherSelection(teacherId, requiredQuota) {
+            const card = document.querySelector(`[data-teacher-id="${teacherId}"]`);
+            const indicator = card.querySelector('.selection-indicator');
+            const isCurrentlySelected = card.classList.contains('border-green-500');
+            
+            if (isCurrentlySelected) {
+                // Deselect
+                card.classList.remove('border-green-500', 'bg-green-50');
+                card.classList.add('border-gray-200', 'bg-white');
+                indicator.classList.remove('bg-green-500', 'border-green-500');
+                indicator.classList.add('border-gray-300');
+                indicator.innerHTML = '';
+            } else {
+                // Check if we can select more
+                const currentSelected = document.querySelectorAll('.teacher-select-card.border-green-500').length;
+                if (currentSelected >= requiredQuota) {
+                    alert(`สามารถเลือกได้สูงสุด ${requiredQuota} คนเท่านั้น`);
+                    return;
+                }
+                
+                // Select
+                card.classList.remove('border-gray-200', 'bg-white');
+                card.classList.add('border-green-500', 'bg-green-50');
+                indicator.classList.remove('border-gray-300');
+                indicator.classList.add('bg-green-500', 'border-green-500');
+                indicator.innerHTML = '<span class="text-white text-xs">✓</span>';
             }
+            
+            updateSelectedCount(requiredQuota);
+        }
 
         function updateSelectedCount(requiredQuota) {
             const selectedCount = document.querySelectorAll('.teacher-select-card.border-green-500').length;
@@ -4103,375 +4175,169 @@
             window.initializeElementSdk = initializeElementSdk;
         }
     </script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
-  <script>
-   (function () {
-    if (typeof firebase === 'undefined') {
-     console.warn('Firebase compat SDK is not available yet.');
-     return;
-    }
-
-    const compatConfig = window.firebaseAppConfig || {
-     apiKey: 'AIzaSyDv--hw2BWKE-NTFrCMpTNz9LEzGK8l5PE',
-     authDomain: 'thaigogo-e9112.firebaseapp.com',
-     projectId: 'thaigogo-e9112',
-     storageBucket: 'thaigogo-e9112.firebasestorage.app',
-     messagingSenderId: '820257616141',
-     appId: '1:820257616141:web:c92cf50ae5e05491fb4044',
-     measurementId: 'G-4FX435MNDC'
-    };
-
-    let app;
-    try {
-     if (firebase.apps && firebase.apps.length) {
-      app = firebase.app();
-     } else {
-      app = firebase.initializeApp(compatConfig);
-     }
-    } catch (error) {
-     console.error('Firebase compat initialization failed:', error);
-     if (typeof window.notifyFirebaseInitError === 'function') {
-      window.notifyFirebaseInitError(error);
-     }
-     return;
-    }
-
-    const auth = firebase.auth();
-    const db = firebase.firestore();
-
-    function ensureAuth() {
-     if (auth.currentUser) {
-      return Promise.resolve(auth.currentUser);
-     }
-
-     let unsubscribe = function () {};
-
-     return new Promise((resolve, reject) => {
-      unsubscribe = auth.onAuthStateChanged(
-       (user) => {
-        if (user) {
-         unsubscribe();
-         resolve(user);
-        }
-       },
-       (error) => {
-        console.error('[Firebase compat] auth observer error:', error);
-        unsubscribe();
-        reject(error);
-       }
-      );
-
-      auth
-       .signInAnonymously()
-       .catch((error) => {
-        console.error('[Firebase compat] anonymous sign-in failed:', error);
-        if (typeof showFirebaseStatus === 'function') {
-         showFirebaseStatus('error', `เข้าสู่ระบบ Firebase ไม่สำเร็จ: ${extractFirebaseMessage(error)}`, true);
-        }
-        unsubscribe();
-        reject(error);
-       });
-     });
-    }
-
-    const compatHelpers = {
-     __source: 'compat',
-     async get(path = '') {
-      await ensureAuth();
-      const seg = path.split('/').filter(Boolean);
-
-      if (seg.length === 1) {
-       const key = seg[0];
-       if (key === 'config') {
-        const snap = await db.collection('config').doc('app').get();
-        return snap.exists ? snap.data() : null;
-       }
-       if (key === 'teachers') {
-        const snap = await db.collection('teachers').orderBy('teacherId', 'asc').get();
-        return snap.docs.map((d) => d.data());
-       }
-       if (key === 'events') {
-        const snap = await db.collection('events').orderBy('eventId', 'asc').get();
-        return snap.docs.map((d) => d.data());
-       }
-       if (key === 'trainings') {
-        const snap = await db.collection('trainings').orderBy('trainingId', 'asc').get();
-        return snap.docs.map((d) => d.data());
-       }
-       if (key === 'activityLog') {
-        const snap = await db.collection('activityLog').orderBy('timestamp', 'desc').get();
-        return snap.docs.map((d) => d.data());
-       }
-      }
-
-      if (seg.length === 2) {
-       const [col, id] = seg;
-       const snap = await db.collection(col).doc(String(id)).get();
-       return snap.exists ? snap.data() : null;
-      }
-
-      throw new Error(`Unsupported GET path: ${path}`);
-     },
-     async put(path = '', value) {
-      await ensureAuth();
-      const seg = path.split('/').filter(Boolean);
-
-      if (seg.length === 1 && seg[0] === 'config') {
-       await db.collection('config').doc('app').set(value ?? {}, { merge: false });
-       return value;
-      }
-
-      if (seg.length === 1 && ['teachers', 'events', 'trainings', 'activityLog'].includes(seg[0])) {
-       const col = seg[0];
-       const colRef = db.collection(col);
-       const batch = db.batch();
-       const existing = await colRef.get();
-       existing.forEach((docSnap) => batch.delete(docSnap.ref));
-
-       const arr = Array.isArray(value) ? value : [];
-       arr.forEach((row) => {
-        const id =
-         col === 'teachers' ? String(row.teacherId) :
-         col === 'events' ? String(row.eventId) :
-         col === 'trainings' ? String(row.trainingId) :
-         String(row.id ?? Date.now());
-        batch.set(colRef.doc(id), row ?? {}, { merge: false });
-       });
-
-       await batch.commit();
-       return value;
-      }
-
-      if (seg.length === 2) {
-       const [col, id] = seg;
-       await db.collection(col).doc(String(id)).set(value ?? {}, { merge: false });
-       return value;
-      }
-
-      throw new Error(`Unsupported PUT path: ${path}`);
-     },
-     async patch(path = '', value) {
-      await ensureAuth();
-      const seg = path.split('/').filter(Boolean);
-
-      if (seg.length === 2) {
-       const [col, id] = seg;
-       await db.collection(col).doc(String(id)).set(value ?? {}, { merge: true });
-       return value;
-      }
-
-      if (seg.length === 1 && ['teachers', 'events', 'trainings', 'activityLog'].includes(seg[0])) {
-       const col = seg[0];
-       const colRef = db.collection(col);
-       const arr = Array.isArray(value) ? value : [];
-       const batch = db.batch();
-       arr.forEach((row) => {
-        const id =
-         col === 'teachers' ? String(row.teacherId) :
-         col === 'events' ? String(row.eventId) :
-         col === 'trainings' ? String(row.trainingId) :
-         String(row.id ?? Date.now());
-        batch.set(colRef.doc(id), row ?? {}, { merge: true });
-       });
-       await batch.commit();
-       return value;
-      }
-
-      throw new Error('PATCH requires collection/id or mergeable array');
-     }
-    };
-
-    if (!window.firebaseDbApi || typeof window.firebaseDbApi.get !== 'function') {
-     window.firebaseDbApi = compatHelpers;
-    }
-
-    window.firebaseApp = app;
-    window.firebaseDatabase = null;
-
-    if (typeof window.notifyFirebaseReady === 'function') {
-     window.notifyFirebaseReady(app, null, window.firebaseDbApi);
-    }
-
-    ensureAuth().catch((error) => {
-     if (typeof window.notifyFirebaseInitError === 'function') {
-      window.notifyFirebaseInitError(error);
-     }
-    });
-   })();
-  </script>
+  
   <script type="module">
-  // --- Firebase v10 Loader + Firestore Bridge ---
-  import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-  import {
-    getFirestore,
-    collection,
-    doc,
-    getDocs,
-    getDoc,
-    setDoc,
-    updateDoc,
-    writeBatch,
-    query,
-    orderBy
-  } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-  import {
-    getAuth,
-    onAuthStateChanged,
-    signInAnonymously
-  } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+// --- Firebase modular v10 + Firestore Bridge (ทางเดียวเท่านั้น) ---
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDocs,
+  getDoc,
+  setDoc,
+  updateDoc,
+  writeBatch,
+  query,
+  orderBy
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
+try {
   const cfg = window.firebaseAppConfig;
+  if (!cfg || !cfg.apiKey) {
+    throw new Error("Missing firebaseAppConfig (apiKey).");
+  }
 
-  try {
-    const app = getApps().length ? getApp() : initializeApp(cfg);
-    const db = getFirestore(app);
-    const auth = getAuth(app);
+  const app = initializeApp(cfg);
+  const db  = getFirestore(app);
+  const auth = getAuth(app);
 
-    const authReady = new Promise((resolve, reject) => {
-      onAuthStateChanged(
-        auth,
-        (user) => {
-          if (user) {
-            resolve(user);
-          } else {
-            signInAnonymously(auth).catch((error) => {
-              console.error('Anonymous sign-in failed:', error);
-              reject(error);
-            });
-          }
-        },
-        reject
-      );
-    });
-
-    const helpers = {
-      async get(path = "") {
-        await authReady;
-        const parts = path.replace(/^\/+/, "").split("/").filter(Boolean);
-        if (parts.length === 1) {
-          const key = parts[0];
-          if (key === "config") {
-            const snap = await getDoc(doc(db, "config", "app"));
-            return snap.exists() ? snap.data() : null;
-          }
-          if (["teachers", "events", "trainings", "activityLog"].includes(key)) {
-            const base = collection(db, key);
-            const q = key === "activityLog"
-              ? query(base, orderBy("timestamp", "desc"))
-              : key === "teachers"
-                ? query(base, orderBy("teacherId", "asc"))
-                : key === "events"
-                  ? query(base, orderBy("eventId", "asc"))
-                  : key === "trainings"
-                    ? query(base, orderBy("trainingId", "asc"))
-                    : base;
-            const snap = await getDocs(q);
-            return snap.docs.map((d) => d.data());
-          }
+  const authReady = new Promise((resolve, reject) => {
+    onAuthStateChanged(
+      auth,
+      (user) => {
+        if (user) {
+          resolve(user);
+        } else {
+          signInAnonymously(auth).catch(reject);
         }
-        if (parts.length === 2) {
-          const [col, id] = parts;
-          const snap = await getDoc(doc(db, col, id));
+      },
+      reject
+    );
+  });
+
+  const helpers = {
+    async get(path = "") {
+      await authReady;
+      const clean = path.replace(/^\/+/, "");
+      const parts = clean.split("/").filter(Boolean);
+      if (parts.length === 1) {
+        const key = parts[0];
+        if (key === "config") {
+          const snap = await getDoc(doc(db, "config", "app"));
           return snap.exists() ? snap.data() : null;
         }
-        throw new Error(`Unsupported GET path: ${path}`);
-      },
-      async put(path = "", payload) {
-        await authReady;
-        const parts = path.replace(/^\/+/, "").split("/").filter(Boolean);
-        if (parts.length === 1 && parts[0] === "config") {
-          await setDoc(doc(db, "config", "app"), payload ?? {}, { merge: false });
-          return payload;
+        if (["teachers", "events", "trainings", "activityLog"].includes(key)) {
+          const base = collection(db, key);
+          const q = key === "activityLog"
+            ? query(base, orderBy("timestamp", "desc"))
+            : key === "teachers"
+              ? query(base, orderBy("teacherId", "asc"))
+              : key === "events"
+                ? query(base, orderBy("eventId", "asc"))
+                : key === "trainings"
+                  ? query(base, orderBy("trainingId", "asc"))
+                  : base;
+          const snap = await getDocs(q);
+          return snap.docs.map(d => d.data());
         }
-        if (parts.length === 1 && ["teachers", "events", "trainings", "activityLog"].includes(parts[0])) {
-          const col = parts[0];
-          const batch = writeBatch(db);
-          const existing = await getDocs(collection(db, col));
-          existing.forEach((docSnap) => batch.delete(docSnap.ref));
-          const arr = Array.isArray(payload) ? payload : [];
-          arr.forEach((row) => {
-            const id =
-              col === "teachers" ? String(row.teacherId) :
-              col === "events" ? String(row.eventId) :
-              col === "trainings" ? String(row.trainingId) :
-              String(row.id ?? Date.now());
-            batch.set(doc(db, col, id), row ?? {}, { merge: false });
-          });
-          await batch.commit();
-          return payload;
-        }
-        if (parts.length === 2) {
-          const [col, id] = parts;
-          await setDoc(doc(db, col, id), payload ?? {}, { merge: false });
-          return payload;
-        }
-        throw new Error(`PUT requires collection or document path (got: ${path})`);
-      },
-      async patch(path = "", payload) {
-        await authReady;
-        const parts = path.replace(/^\/+/, "").split("/").filter(Boolean);
-        if (parts.length === 2) {
-          const [col, id] = parts;
-          await updateDoc(doc(db, col, id), payload ?? {});
-          return payload;
-        }
-        if (parts.length === 1 && ["teachers", "events", "trainings", "activityLog"].includes(parts[0])) {
-          const col = parts[0];
-          const arr = Array.isArray(payload) ? payload : [];
-          const batch = writeBatch(db);
-          arr.forEach((row) => {
-            const id =
-              col === "teachers" ? String(row.teacherId) :
-              col === "events" ? String(row.eventId) :
-              col === "trainings" ? String(row.trainingId) :
-              String(row.id ?? Date.now());
-            batch.set(doc(db, col, id), row ?? {}, { merge: true });
-          });
-          await batch.commit();
-          return payload;
-        }
-        throw new Error(`PATCH requires collection/id or mergeable array (got: ${path})`);
       }
-    };
-
-    window.firebaseDbApi = helpers;
-    if (typeof window.notifyFirebaseReady === "function") {
-      window.notifyFirebaseReady(app, db, helpers);
+      if (parts.length === 2) {
+        const [col, id] = parts;
+        const snap = await getDoc(doc(db, col, id));
+        return snap.exists() ? snap.data() : null;
+      }
+      throw new Error(`Unsupported GET path: ${path}`);
+    },
+    async put(path = "", payload) {
+      await authReady;
+      const clean = path.replace(/^\/+/, "");
+      const parts = clean.split("/").filter(Boolean);
+      if (parts.length === 1 && parts[0] === "config") {
+        await setDoc(doc(db, "config", "app"), payload ?? {}, { merge: false });
+        return payload;
+      }
+      if (parts.length === 1 && ["teachers", "events", "trainings", "activityLog"].includes(parts[0])) {
+        const col = parts[0];
+        const batch = writeBatch(db);
+        const existing = await getDocs(collection(db, col));
+        existing.forEach(docSnap => batch.delete(docSnap.ref));
+        const arr = Array.isArray(payload) ? payload : [];
+        arr.forEach(row => {
+          const id =
+            col === "teachers" ? String(row.teacherId) :
+            col === "events" ? String(row.eventId) :
+            col === "trainings" ? String(row.trainingId) :
+            String(row.id ?? Date.now());
+          batch.set(doc(db, col, id), row ?? {}, { merge: false });
+        });
+        await batch.commit();
+        return payload;
+      }
+      if (parts.length === 2) {
+        const [col, id] = parts;
+        await setDoc(doc(db, col, id), payload ?? {}, { merge: false });
+        return payload;
+      }
+      throw new Error(`PUT requires collection or document path (got: ${path})`);
+    },
+    async patch(path = "", payload) {
+      await authReady;
+      const clean = path.replace(/^\/+/, "");
+      const parts = clean.split("/").filter(Boolean);
+      if (parts.length === 2) {
+        const [col, id] = parts;
+        await updateDoc(doc(db, col, id), payload ?? {});
+        return payload;
+      }
+      if (parts.length === 1 && ["teachers", "events", "trainings", "activityLog"].includes(parts[0])) {
+        const col = parts[0];
+        const arr = Array.isArray(payload) ? payload : [];
+        const batch = writeBatch(db);
+        arr.forEach(row => {
+          const id =
+            col === "teachers" ? String(row.teacherId) :
+            col === "events" ? String(row.eventId) :
+            col === "trainings" ? String(row.trainingId) :
+            String(row.id ?? Date.now());
+          batch.set(doc(db, col, id), row ?? {}, { merge: true });
+        });
+        await batch.commit();
+        return payload;
+      }
+      throw new Error(`PATCH requires collection/id or mergeable array (got: ${path})`);
     }
-  } catch (error) {
-    if (typeof window.notifyFirebaseInitError === "function") {
-      window.notifyFirebaseInitError(error);
-    } else {
-      console.error('Firebase initialization error:', error);
+  };
+
+  if (typeof window.notifyFirebaseReady === "function") {
+    window.notifyFirebaseReady(app, db, helpers);
+  }
+} catch (err) {
+  console.error('Firebase initialization error:', err);
+  if (typeof window.notifyFirebaseInitError === 'function') {
+    window.notifyFirebaseInitError(err);
+  }
+}
+</script>
+  <script>
+// Ensure: เริ่มหลัง Firestore พร้อม
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    await (window.firebaseReadyPromise || Promise.resolve());
+    if (typeof window.loadInitialData === 'function') {
+      await window.loadInitialData();
+    } else if (typeof window.renderAllViews === 'function') {
+      await window.renderAllViews();
+    }
+    (document.getElementById('loading-overlay') || {}).classList?.add('hidden');
+  } catch (err) {
+    console.error('App bootstrap failed:', err);
+    if (typeof window.showFirebaseStatus === 'function') {
+      window.showFirebaseStatus('error', 'ไม่สามารถโหลดข้อมูลได้: ' + (err?.message || err), true);
     }
   }
-  </script>
-  <script>
-  // Ensure: เริ่มหลัง Firestore พร้อม
-  document.addEventListener('DOMContentLoaded', async () => {
-    try {
-      await (window.firebaseReadyPromise || Promise.resolve());
-      if (typeof window.initializeElementSdk === 'function') {
-        await window.initializeElementSdk();
-      }
-      if (typeof window.loadInitialData === 'function') {
-        await window.loadInitialData();
-      } else if (typeof window.renderAllViews === 'function') {
-        await window.renderAllViews();
-      }
-      const overlay = document.getElementById('loading-overlay');
-      if (overlay) {
-        overlay.classList.add('hidden');
-      }
-    } catch (err) {
-      console.error('App bootstrap failed:', err);
-      if (typeof window.showFirebaseStatus === 'function') {
-        window.showFirebaseStatus('error', 'ไม่สามารถโหลดข้อมูลได้: ' + (err?.message || err), true);
-      }
-    }
-  });
-  </script>
+});
+</script>
  </body>
 </html>
