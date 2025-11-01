@@ -899,6 +899,15 @@
     <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
    </div>
   </div>
+  <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
+   <div class="text-center">
+    <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
+   </div>
+  </div>
   <script>
         // Firebase initialization bridge (shared with module loader)
         window.firebaseAppConfig = window.firebaseAppConfig || {
@@ -993,6 +1002,12 @@
             if (!Number.isNaN(direct.getTime())) {
                 return direct.toISOString().slice(0, 10);
             }
+            ensureTeacherStats(teacher);
+            const value = queueType === QUEUE_TYPES.TRAINING
+                ? teacher.trainingQueueScore
+                : teacher.dutyQueueScore;
+            return Number.isFinite(value) ? value : 0;
+        }
 
             const match = str.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
             if (match) {
@@ -2314,19 +2329,58 @@
             `;
         }
 
-        // Navigation
-        function showView(viewName) {
-            // Hide all views
-            document.querySelectorAll('.view').forEach(view => {
-                view.classList.add('hidden');
+        function recomputeTeacherStats() {
+            const teacherMap = new Map();
+
+            teachers.forEach(teacher => {
+                ensureTeacherStats(teacher);
+                teacher.dutyDuties = 0;
+                teacher.trainingDuties = 0;
+                teacher.dutySwapCount = 0;
+                teacher.trainingSwapCount = 0;
+                teacher.totalDuties = 0;
+                teacher.swapCount = 0;
+                teacher.lastDutyDate = null;
+                teacher.lastTrainingDate = null;
+                teacherMap.set(teacher.teacherId, teacher);
             });
-            
-            // Show selected view
-            document.getElementById(`${viewName}-view`).classList.remove('hidden');
-            
-            // Update navigation
-            document.querySelectorAll('.nav-item').forEach(item => {
-                item.classList.remove('active');
+
+            const updateFromEvent = (event, queueType) => {
+                const slots = getEventAssignmentSlots(event);
+                slots.forEach(slot => {
+                    if (!slot || slot.currentTeacherId === null || slot.currentTeacherId === undefined) {
+                        return;
+                    }
+                    const teacher = teacherMap.get(slot.currentTeacherId);
+                    if (!teacher) {
+                        return;
+                    }
+
+                    const dateValue = normalizeDateString(event.date);
+                    if (queueType === QUEUE_TYPES.TRAINING) {
+                        teacher.trainingDuties = (teacher.trainingDuties || 0) + 1;
+                        teacher.lastTrainingDate = latestDateString(teacher.lastTrainingDate, dateValue);
+                        if (slot.originalTeacherId && slot.originalTeacherId !== slot.currentTeacherId) {
+                            teacher.trainingSwapCount = (teacher.trainingSwapCount || 0) + 1;
+                        }
+                    } else {
+                        teacher.dutyDuties = (teacher.dutyDuties || 0) + 1;
+                        teacher.lastDutyDate = latestDateString(teacher.lastDutyDate, dateValue);
+                        if (slot.originalTeacherId && slot.originalTeacherId !== slot.currentTeacherId) {
+                            teacher.dutySwapCount = (teacher.dutySwapCount || 0) + 1;
+                        }
+                    }
+                });
+            };
+
+            events.forEach(event => updateFromEvent(event, QUEUE_TYPES.DUTY));
+            trainings.forEach(event => updateFromEvent(event, QUEUE_TYPES.TRAINING));
+
+            teachers.forEach(teacher => {
+                teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
+                teacher.swapCount = (teacher.dutySwapCount || 0) + (teacher.trainingSwapCount || 0);
+                const latestOverall = latestDateString(teacher.lastDutyDate, teacher.lastTrainingDate);
+                teacher.lastEventDate = latestOverall || normalizeDateString(teacher.lastEventDate);
             });
             document.querySelector(`[data-view="${viewName}"]`).classList.add('active');
             
@@ -2348,49 +2402,53 @@
                     renderHistory();
                     break;
             }
+
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : value;
         }
 
-        // Dashboard rendering
-        function renderDashboard() {
-            const totalEvents = events.length;
-            const assignedEvents = events.filter(e => e.status === 'assigned').length;
-            const pendingEvents = events.filter(e => e.status === 'pending').length;
-            const totalTeachers = teachers.length;
+        function createAssignmentSlotsFromIds(ids = []) {
+            return (Array.isArray(ids) ? ids : [])
+                .filter(id => id !== null && id !== undefined)
+                .map(id => {
+                    const normalizedId = normalizeTeacherId(id);
+                    return {
+                        originalTeacherId: normalizedId,
+                        currentTeacherId: normalizedId,
+                        substituteTeacherId: null,
+                        substitutionType: SUBSTITUTION_TYPES.NONE
+                    };
+                });
+        }
 
-            document.getElementById('total-events').textContent = totalEvents;
-            document.getElementById('assigned-events').textContent = assignedEvents;
-            document.getElementById('pending-events').textContent = pendingEvents;
-            document.getElementById('total-teachers').textContent = totalTeachers;
+        function ensureEventAssignments(event) {
+            if (!event || typeof event !== 'object') {
+                return event;
+            }
 
-            // Render latest event (most recent assigned event)
-            const latestEvent = events
-                .filter(e => e.status === 'assigned')
-                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+            if (!Array.isArray(event.assignmentSlots) || event.assignmentSlots.length === 0) {
+                event.assignmentSlots = createAssignmentSlotsFromIds(event.assignedTeachers);
+            } else {
+                event.assignmentSlots = event.assignmentSlots.map(slot => {
+                    const originalId = normalizeTeacherId(slot.originalTeacherId ?? slot.teacherId ?? slot.currentTeacherId ?? null);
+                    const currentId = normalizeTeacherId(slot.currentTeacherId ?? slot.substituteTeacherId ?? originalId);
+                    const substituted = originalId && currentId && originalId !== currentId;
+                    const slotType = slot.substitutionType || (substituted ? SUBSTITUTION_TYPES.REPLACEMENT : SUBSTITUTION_TYPES.NONE);
+                    return {
+                        originalTeacherId: originalId,
+                        currentTeacherId: currentId,
+                        substituteTeacherId: substituted ? currentId : null,
+                        substitutionType: substituted ? slotType : SUBSTITUTION_TYPES.NONE
+                    };
+                });
+            }
 
-            const latestEventHtml = latestEvent ? `
-                <div class="p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <h4 class="font-medium text-gray-800 mb-2">${latestEvent.eventName}</h4>
-                    <p class="text-sm text-gray-600 mb-3">${formatDateThai(latestEvent.date)} • ${latestEvent.time}</p>
-                    <p class="text-sm text-gray-600 mb-3">📍 ${latestEvent.location}</p>
-                    
-                    <div class="mb-3">
-                        <p class="text-sm font-medium text-gray-700 mb-2">ครูที่ออกงาน:</p>
-                        <div class="grid grid-cols-2 gap-2">
-                            ${latestEvent.assignedTeachers.map(id => {
-                                const teacher = getTeacherById(id);
-                                return `
-                                    <div class="flex items-center bg-white p-2 rounded border">
-                                        ${createTeacherAvatar(teacher)}
-                                        <span class="ml-2 text-sm font-medium">${teacher.name}</span>
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    </div>
-                </div>
-            ` : '<p class="text-gray-500 text-center py-8">ยังไม่มีงานที่จัดคิวแล้ว</p>';
+            event.assignedTeachers = event.assignmentSlots
+                .map(slot => slot.currentTeacherId)
+                .filter(id => id !== null && id !== undefined);
 
-            document.getElementById('latest-event').innerHTML = latestEventHtml;
+            return event;
+        }
 
             // Render next queue split by duty/training rows
             const dutyQueueTeachers = getNextQueueTeachers(13, QUEUE_TYPES.DUTY);
@@ -2404,11 +2462,8 @@
             highlightNextQueueSelection();
             renderNextQueueInsightFromSelection();
 
-            // Render urgent events (pending events sorted by date)
-            const urgentEvents = events
-                .filter(e => e.status === 'pending')
-                .sort((a, b) => new Date(a.date) - new Date(b.date))
-                .slice(0, 5);
+            const helpers = window.firebaseDbApi;
+            const method = (options.method || 'GET').toUpperCase();
 
             const urgentEventsHtml = urgentEvents.length > 0 ? urgentEvents.map(event => `
                 <div class="flex justify-between items-center p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -2434,7 +2489,14 @@
                 </div>
             `).join('') : '<p class="text-gray-500 text-center py-4">ไม่มีงานที่ต้องจัดคิวเร่งด่วน</p>';
 
-            document.getElementById('urgent-events').innerHTML = urgentEventsHtml;
+            let payload = options.body;
+            if (typeof payload === 'string') {
+                try {
+                    payload = JSON.parse(payload);
+                } catch (error) {
+                    console.warn('Unable to parse Firebase payload string, sending raw value.');
+                }
+            }
 
             // Render top priority teachers (lowest score first)
             const topTeachers = [...teachers]
@@ -2637,572 +2699,11 @@
                                         const teacher = getTeacherById(id);
                                         const trainingScore = teacher ? getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING) : '-';
                                         return `
-                                            <div class="flex items-center bg-gray-50 p-2 rounded-lg border ${isSubstituted ? 'border-[#E1B1C1]' : 'border-transparent'}">
-                                                ${createTeacherAvatar(currentTeacher)}
+                                            <div class="flex items-center bg-gray-50 p-2 rounded-lg">
+                                                ${createTeacherAvatar(teacher)}
                                                 <div class="ml-2">
                                                     <p class="font-medium text-gray-800 text-sm">${teacher?.name || 'ไม่พบข้อมูล'}</p>
                                                     <div class="queue-score text-xs">คะแนนอบรม ${trainingScore}</div>
-                                                </div>
-                                            </div>
-                                        `;
-                                    }).join('')}
-                                </div>
-                            </div>
-                        ` : `
-                            <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                <p class="text-sm text-yellow-700 text-center">ยังไม่ได้จัดคิว</p>
-                            </div>
-                        `}
-
-                        <div class="flex flex-wrap gap-2">
-                            <button onclick="editTraining(${tr.trainingId})" class="btn-primary text-sm flex-1 min-w-[140px]"><span class="mr-1">✏️</span>แก้ไข</button>
-                            ${tr.status === 'pending'
-                                ? `<button onclick="openTrainingAutoAssignModal(${tr.trainingId})" class='btn-success text-sm flex-1 min-w-[140px]'><span class="mr-1">🎯</span>จัดคิว</button>`
-                                : `<button onclick="openTrainingSubstitutionModal(${tr.trainingId})" class='btn-danger text-sm flex-1 min-w-[140px]'><span class="mr-1">🔄</span>แทน</button>`}
-                            <button onclick="deleteQueueItem(${tr.trainingId}, '${QUEUE_TYPES.TRAINING}')" class="btn-delete text-sm flex-1 min-w-[140px]"><span class="mr-1">🗑️</span>ลบ</button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            container.innerHTML = html || '<p class="text-gray-500 text-center py-8">ยังไม่มีข้อมูลการอบรม</p>';
-        }
-
-        // Teachers table rendering
-        function renderTeachersTable() {
-            const tbody = document.getElementById('teachers-table-body');
-            if (!tbody) {
-                return;
-            }
-
-            const sortedTeachers = [...teachers]
-                .map(teacher => {
-                    ensureTeacherStats(teacher);
-                    return teacher;
-                })
-                .sort((a, b) => {
-                    const dutyDiff = getTeacherQueueScore(a, QUEUE_TYPES.DUTY) - getTeacherQueueScore(b, QUEUE_TYPES.DUTY);
-                    if (dutyDiff !== 0) {
-                        return dutyDiff;
-                    }
-                    const trainingDiff = getTeacherQueueScore(a, QUEUE_TYPES.TRAINING) - getTeacherQueueScore(b, QUEUE_TYPES.TRAINING);
-                    if (trainingDiff !== 0) {
-                        return trainingDiff;
-                    }
-                    const dateA = a.lastEventDate ? new Date(a.lastEventDate) : new Date(0);
-                    const dateB = b.lastEventDate ? new Date(b.lastEventDate) : new Date(0);
-                    return dateA - dateB;
-                })
-                .map((teacher, index) => ({ ...teacher, queueRank: index + 1 }));
-
-            if (sortedTeachers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-gray-500">ยังไม่มีข้อมูลครู</td></tr>';
-                renderTeacherDetail(null);
-                return;
-            }
-
-            if (!selectedTeacherId || !sortedTeachers.some(t => t.teacherId === selectedTeacherId)) {
-                selectedTeacherId = sortedTeachers[0].teacherId;
-            }
-
-            tbody.innerHTML = sortedTeachers.map(teacher => {
-                const isActive = teacher.teacherId === selectedTeacherId;
-                return `
-                    <tr class="${isActive ? 'is-active' : ''}" onclick="showTeacherDetail(${teacher.teacherId})">
-                        <td class="font-medium text-gray-700">${teacher.queueRank}</td>
-                        <td>
-                            <div class="flex items-center space-x-3">
-                                ${createTeacherAvatar(teacher)}
-                                <div>
-                                    <p class="font-semibold text-gray-800">${teacher.name}</p>
-                                    ${teacher.lastEventDate ? `<p class="text-xs text-gray-500">ล่าสุด ${formatDateThai(teacher.lastEventDate)}</p>` : ''}
-                                </div>
-                                ${callToAction}
-                            </div>
-                        </td>
-                        <td class="text-sm text-gray-600">${teacher.position}</td>
-                        <td class="font-semibold text-[#5b2d38]">${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)}</td>
-                        <td class="font-semibold text-[#245f7a]">${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</td>
-                        <td class="text-center">${teacher.dutyDuties ?? 0}</td>
-                        <td class="text-center">${teacher.trainingDuties ?? 0}</td>
-                        <td class="text-center">${teacher.swapCount ?? 0}</td>
-                    </tr>
-                `;
-            }).join('');
-
-            const activeTeacher = sortedTeachers.find(t => t.teacherId === selectedTeacherId) || sortedTeachers[0];
-            renderTeacherDetail(activeTeacher);
-        }
-
-        function showTeacherDetail(teacherId) {
-            selectedTeacherId = teacherId;
-            renderTeachersTable();
-        }
-
-        function renderTeacherDetail(teacher) {
-            const panel = document.getElementById('teacher-detail-panel');
-            if (!panel) {
-                return;
-            }
-
-            if (!teacher) {
-                panel.innerHTML = '<p class="text-sm text-gray-500">ยังไม่มีข้อมูลครูให้แสดง</p>';
-                return;
-            }
-
-            ensureTeacherStats(teacher);
-            const relatedEvents = events
-                .filter(event => Array.isArray(event.assignedTeachers) && event.assignedTeachers.includes(teacher.teacherId))
-                .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-            const relatedTrainingEvents = trainings
-                .filter(event => Array.isArray(event.assignedTeachers) && event.assignedTeachers.includes(teacher.teacherId))
-                .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-            const totalEvent = relatedEvents.length;
-            const totalTraining = relatedTrainingEvents.length;
-            const totalAll = totalEvent + totalTraining;
-
-            const highlightEvents = relatedEvents.slice(0, 3).map(event => {
-                const statusLabel = event.status === 'assigned' ? 'จัดคิวแล้ว' : event.status === 'completed' ? 'เสร็จสิ้น' : 'รอจัดคิว';
-                return `
-                    <li class="p-3 rounded-lg border border-gray-200 bg-gray-50">
-                        <p class="font-medium text-gray-800">${event.eventName}</p>
-                        <p class="text-xs text-gray-500">${formatDateThai(event.date)} • ${event.time}</p>
-                        <p class="text-xs text-gray-500">สถานที่: ${event.location}</p>
-                        <span class="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-full" style="background: rgba(137, 77, 91, 0.12); color: #5b2d38;">${statusLabel}</span>
-                    </li>
-                `;
-            }).join('');
-
-                const highlightTraining = relatedTrainingEvents.slice(0, 3).map(event => {
-                    const statusLabel = event.status === 'assigned' ? 'จัดคิวแล้ว' : event.status === 'completed' ? 'เสร็จสิ้น' : 'รอจัดคิว';
-                    return `
-                        <li class="p-3 rounded-lg border border-blue-200 bg-blue-50">
-                            <p class="font-medium text-gray-800">${event.trainingName || event.eventName}</p>
-                            <p class="text-xs text-gray-500">${formatDateRangeThai(event.startDate || event.date, event.endDate || event.date)} • ${event.time}</p>
-                            <p class="text-xs text-gray-500">สถานที่: ${event.location}</p>
-                            <span class="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-full" style="background: rgba(196, 233, 248, 0.6); color: #245f7a;">${statusLabel}</span>
-                        </li>
-                    `;
-            }).join('');
-
-            panel.innerHTML = `
-                <div class="flex items-center gap-4">
-                    ${createTeacherAvatar(teacher, true)}
-                    <div>
-                        <h3 class="text-xl font-bold text-gray-800">${teacher.name}</h3>
-                        <p class="text-sm text-gray-600">${teacher.position}</p>
-                        <div class="mt-2 flex flex-wrap gap-2">
-                            <span class="queue-score">คะแนนออกงาน ${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)}</span>
-                            <span class="queue-score" style="background: rgba(36, 95, 122, 0.1); color: #245f7a;">คะแนนอบรม ${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="teacher-detail-card mt-4">
-                    <div class="detail-row"><span>ลำดับคิวปัจจุบัน</span><span>${teacher.queueRank ?? '-'}</span></div>
-                    <div class="detail-row"><span>คะแนนออกงาน</span><span>${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)}</span></div>
-                    <div class="detail-row"><span>คะแนนอบรม</span><span>${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</span></div>
-                    <div class="detail-row"><span>รวมทั้งหมด (งาน+อบรม)</span><span>${totalAll} ครั้ง</span></div>
-                    <div class="detail-row"><span>งาน (Event)</span><span>${totalEvent} ครั้ง</span></div>
-                    <div class="detail-row"><span>อบรม (Training)</span><span>${totalTraining} ครั้ง</span></div>
-                    <div class="detail-row"><span>ออกงานทั้งหมด</span><span>${teacher.dutyDuties ?? 0} ครั้ง</span></div>
-                    <div class="detail-row"><span>อบรมทั้งหมด</span><span>${teacher.trainingDuties ?? 0} ครั้ง</span></div>
-                    <div class="detail-row"><span>แทนงาน</span><span>${teacher.dutySwapCount ?? 0} ครั้ง</span></div>
-                    <div class="detail-row"><span>แทนอบรม</span><span>${teacher.trainingSwapCount ?? 0} ครั้ง</span></div>
-                    <div class="detail-row"><span>รวมการแทน</span><span>${teacher.swapCount ?? 0} ครั้ง</span></div>
-                    <div class="detail-row"><span>ออกงานล่าสุด</span><span>${teacher.lastDutyDate ? formatDateThai(teacher.lastDutyDate) : '-'}</span></div>
-                    <div class="detail-row"><span>อบรมล่าสุด</span><span>${teacher.lastTrainingDate ? formatDateThai(teacher.lastTrainingDate) : '-'}</span></div>
-                </div>
-                <div class="mt-4">
-                    <h4 class="font-semibold text-gray-800">งานที่เกี่ยวข้องล่าสุด</h4>
-                    ${relatedEvents.length > 0 ? `<ul class="mt-2 space-y-2">${highlightEvents}</ul>` : '<p class="text-sm text-gray-500 mt-2">ยังไม่มีประวัติงาน</p>'}
-                </div>
-                <div class="mt-4">
-                    <h4 class="font-semibold text-gray-800">การอบรมที่เกี่ยวข้องล่าสุด</h4>
-                    ${relatedTrainingEvents.length > 0 ? `<ul class="mt-2 space-y-2">${highlightTraining}</ul>` : '<p class="text-sm text-gray-500 mt-2">ยังไม่มีประวัติการอบรม</p>'}
-                </div>
-                <div class="flex gap-3 mt-6">
-                    <button class="btn-primary flex-1" onclick="editTeacher(${teacher.teacherId})">
-                        <span class="mr-1">✏️</span>แก้ไขข้อมูล
-                    </button>
-                    <button class="btn-success flex-1" onclick="adjustQueueScore(${teacher.teacherId})">
-                        <span class="mr-1">⚖️</span>ปรับคะแนนคิว
-                    </button>
-                    <button class="btn-delete flex-1" onclick="deleteTeacher(${teacher.teacherId})">
-                        <span class="mr-1">🗑️</span>ลบครู
-                    </button>
-                </div>
-            `;
-        }
-
-        // History rendering
-        function renderHistory() {
-            // Duty distribution
-            const sortedTeachers = [...teachers].map(ensureTeacherStats).sort((a, b) => (a.totalDuties || 0) - (b.totalDuties || 0));
-            const dutyDistributionHtml = sortedTeachers.map(teacher => `
-                <div class="flex justify-between items-center py-2 border-b border-gray-200">
-                    <div class="flex items-center">
-                        ${createTeacherAvatar(teacher)}
-                        <span class="font-medium ml-3">${teacher.name}</span>
-                    </div>
-                    <span class="text-gray-600">${teacher.dutyDuties ?? 0} งาน | ${teacher.trainingDuties ?? 0} อบรม</span>
-                </div>
-            `).join('');
-            document.getElementById('duty-distribution').innerHTML = dutyDistributionHtml;
-
-            // Substitution stats
-            const substitutionStats = teachers.map(ensureTeacherStats).filter(t => (t.swapCount || 0) > 0);
-            const substitutionStatsHtml = substitutionStats.length > 0 ? substitutionStats.map(teacher => `
-                <div class="flex justify-between items-center py-2 border-b border-gray-200">
-                    <div class="flex items-center">
-                        ${createTeacherAvatar(teacher)}
-                        <span class="font-medium ml-3">${teacher.name}</span>
-                    </div>
-                    <span class="font-semibold" style="color: var(--secondary-bg);">${teacher.swapCount} ครั้ง (งาน ${teacher.dutySwapCount ?? 0} | อบรม ${teacher.trainingSwapCount ?? 0})</span>
-                </div>
-            `).join('') : '<p class="text-gray-500 text-center py-4">ยังไม่มีการแทน</p>';
-            document.getElementById('substitution-stats').innerHTML = substitutionStatsHtml;
-
-            // Activity log
-            const activityLogHtml = activityLog.length > 0 ? activityLog.map(log => {
-                const logClass = log.type === 'auto-assign' ? 'auto-assign' :
-                               log.type === 'manual-edit' ? 'manual-edit' : 'substitution';
-                const date = formatDateTimeThai(log.timestamp);
-                
-                return `
-                    <div class="p-3 rounded-lg border ${isSubstituted ? 'border-[#E1B1C1] bg-[#fdf6f8]' : 'border-gray-200 bg-white'}">
-                        <div class="flex items-center justify-between gap-3">
-                            <div class="flex items-center space-x-3">
-                                ${createTeacherAvatar(originalTeacher)}
-                                <div>
-                                    <p class="text-xs text-gray-500 uppercase tracking-wide">คิวที่ ${index + 1}</p>
-                                    <p class="text-sm font-medium text-gray-800">${originalName}</p>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                ${createTeacherAvatar(currentTeacher)}
-                                <div class="text-right">
-                                    <p class="text-xs text-gray-500 uppercase tracking-wide">ผู้ปฏิบัติจริง</p>
-                                    <p class="text-sm font-semibold ${isSubstituted ? 'text-[#894D5B]' : 'text-gray-800'}">${currentName}</p>
-                                    <p class="text-xs text-gray-500">${scoreLabel} ${currentScore}</p>
-                                </div>
-                            </div>
-                        </div>
-                        ${isSubstituted
-                            ? `<p class="text-xs text-[#894D5B] mt-2">แทนคิวของ ${originalName}</p>`
-                            : '<p class="text-xs text-gray-500 mt-2">ตรงตามคิวเดิม</p>'}
-                    </div>
-                `;
-            }).join('');
-        }
-
-        // Modal functions
-        function renderEventAssignmentSummary(event) {
-            const summary = document.getElementById('event-assignment-summary');
-            const list = document.getElementById('event-assignment-list');
-
-            if (!summary || !list) {
-                return;
-            }
-
-            if (!event) {
-                summary.classList.add('hidden');
-                list.innerHTML = '';
-                return;
-            }
-
-            const slots = getEventAssignmentSlots(event);
-            summary.classList.remove('hidden');
-
-            if (!slots.length) {
-                list.innerHTML = '<p class="text-sm text-gray-500">ยังไม่มีข้อมูลการจัดคิวสำหรับงานนี้</p>';
-                return;
-            }
-
-            list.innerHTML = slots.map((slot, index) => {
-                const originalTeacher = slot.originalTeacherId ? getTeacherById(slot.originalTeacherId) : null;
-                const currentTeacher = slot.currentTeacherId ? getTeacherById(slot.currentTeacherId) : null;
-                const isSubstituted = slot.originalTeacherId && slot.currentTeacherId && slot.originalTeacherId !== slot.currentTeacherId;
-
-                const originalName = originalTeacher ? originalTeacher.name : 'ไม่ระบุ';
-                const currentName = currentTeacher ? currentTeacher.name : 'ไม่พบข้อมูล';
-                const currentScore = currentTeacher ? getTeacherQueueScore(currentTeacher, currentEventQueueType) : '-';
-                const scoreLabel = currentEventQueueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน';
-
-                return `
-                    <div class="p-3 rounded-lg border ${isSubstituted ? 'border-[#E1B1C1] bg-[#fdf6f8]' : 'border-gray-200 bg-white'}">
-                        <div class="flex items-center justify-between gap-3">
-                            <div class="flex items-center space-x-3">
-                                ${createTeacherAvatar(originalTeacher)}
-                                <div>
-                                    <p class="text-xs text-gray-500 uppercase tracking-wide">คิวที่ ${index + 1}</p>
-                                    <p class="text-sm font-medium text-gray-800">${originalName}</p>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                ${createTeacherAvatar(currentTeacher)}
-                                <div class="text-right">
-                                    <p class="text-xs text-gray-500 uppercase tracking-wide">ผู้ปฏิบัติจริง</p>
-                                    <p class="text-sm font-semibold ${isSubstituted ? 'text-[#894D5B]' : 'text-gray-800'}">${currentName}</p>
-                                    <p class="text-xs text-gray-500">${scoreLabel} ${currentScore}</p>
-                                </div>
-                            </div>
-                        </div>
-                        ${isSubstituted
-                            ? `<p class="text-xs text-[#894D5B] mt-2">แทนคิวของ ${originalName}</p>`
-                            : '<p class="text-xs text-gray-500 mt-2">ตรงตามคิวเดิม</p>'}
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function fillEventFormFields(data = {}) {
-            document.getElementById('event-name').value = data.eventName || '';
-            document.getElementById('event-details').value = data.details || '';
-            document.getElementById('event-date').value = data.date || '';
-            document.getElementById('event-start-time').value = data.startTime || '';
-            document.getElementById('event-end-time').value = data.endTime || '';
-            document.getElementById('event-location').value = data.location || '';
-            const quota = parseInt(data.requiredQuota, 10);
-            document.getElementById('event-quota').value = Number.isFinite(quota) ? quota : '';
-            const latInput = document.getElementById('event-location-lat');
-            const lngInput = document.getElementById('event-location-lng');
-            if (latInput) latInput.value = data.locationLat ?? '';
-            if (lngInput) lngInput.value = data.locationLng ?? '';
-        }
-
-        function resetEventForm() {
-            const form = document.getElementById('event-form');
-            if (currentEventInitialData) {
-                fillEventFormFields(currentEventInitialData);
-            } else if (form) {
-                form.reset();
-                fillEventFormFields({ requiredQuota: '' });
-            }
-
-            renderEventAssignmentSummary(currentEventId ? getEventById(currentEventId, currentEventQueueType) : null);
-        }
-
-        function openEventModal(eventId = null, queueType = QUEUE_TYPES.DUTY) {
-            currentEventId = eventId;
-            currentEventQueueType = queueType || QUEUE_TYPES.DUTY;
-
-            const modal = document.getElementById('event-modal');
-            const title = document.getElementById('event-modal-title');
-            const form = document.getElementById('event-form');
-            const queueLabel = getQueueDisplayName(currentEventQueueType);
-
-            if (eventId) {
-                const event = getEventById(eventId, currentEventQueueType);
-                if (!event) {
-                    console.error('ไม่พบข้อมูลงานสำหรับคิว', currentEventQueueType, 'รหัส', eventId);
-                    return;
-                }
-                title.textContent = `แก้ไข${queueLabel}`;
-                fillEventFormFields(event);
-                currentEventInitialData = {
-                    eventName: event.eventName || '',
-                    details: event.details || '',
-                    date: event.date || '',
-                    startTime: event.startTime || '',
-                    endTime: event.endTime || '',
-                    location: event.location || '',
-                    locationLat: event.locationLat ?? '',
-                    locationLng: event.locationLng ?? '',
-                    requiredQuota: event.requiredQuota ?? ''
-                };
-                renderEventAssignmentSummary(event);
-            } else {
-                title.textContent = `เพิ่ม${queueLabel}ใหม่`;
-                form.reset();
-                currentEventInitialData = null;
-                fillEventFormFields({ requiredQuota: '' });
-                renderEventAssignmentSummary(null);
-            }
-
-            modal.classList.add('show');
-        }
-
-        function closeEventModal() {
-            document.getElementById('event-modal').classList.remove('show');
-            currentEventId = null;
-            currentEventInitialData = null;
-            renderEventAssignmentSummary(null);
-        }
-
-        function fillTrainingFormFields(data = {}) {
-            document.getElementById('training-name').value = data.trainingName || '';
-            document.getElementById('training-details').value = data.details || '';
-            document.getElementById('training-start-date').value = data.startDate || data.date || '';
-            document.getElementById('training-end-date').value = data.endDate || data.date || '';
-            document.getElementById('training-start-time').value = data.startTime || '';
-            document.getElementById('training-end-time').value = data.endTime || '';
-            document.getElementById('training-location').value = data.location || '';
-            const quota = parseInt(data.requiredQuota, 10);
-            document.getElementById('training-quota').value = Number.isFinite(quota) ? quota : '';
-            const latInput = document.getElementById('training-location-lat');
-            const lngInput = document.getElementById('training-location-lng');
-            if (latInput) latInput.value = data.locationLat ?? '';
-            if (lngInput) lngInput.value = data.locationLng ?? '';
-        }
-
-        function resetTrainingForm() {
-            const form = document.getElementById('training-form');
-            if (currentTrainingInitialData) {
-                fillTrainingFormFields(currentTrainingInitialData);
-            } else if (form) {
-                form.reset();
-                fillTrainingFormFields({ requiredQuota: '' });
-            }
-        }
-
-        function openTrainingModal(trainingId = null) {
-            currentTrainingId = trainingId;
-            const modal = document.getElementById('training-modal');
-            const title = document.getElementById('training-modal-title');
-            const form = document.getElementById('training-form');
-
-            const latInput = document.getElementById('training-location-lat');
-            const lngInput = document.getElementById('training-location-lng');
-
-            if (trainingId) {
-                const tr = trainings.find(t => t.trainingId === trainingId);
-                if (!tr) {
-                    console.error('ไม่พบข้อมูลอบรมรหัส', trainingId);
-                    return;
-                }
-                title.textContent = 'แก้ไขอบรม';
-                fillTrainingFormFields(tr);
-                currentTrainingInitialData = {
-                    trainingName: tr.trainingName || '',
-                    details: tr.details || '',
-                    startDate: tr.startDate || tr.date || '',
-                    endDate: tr.endDate || tr.date || '',
-                    startTime: tr.startTime || '',
-                    endTime: tr.endTime || '',
-                    location: tr.location || '',
-                    locationLat: tr.locationLat ?? '',
-                    locationLng: tr.locationLng ?? '',
-                    requiredQuota: tr.requiredQuota ?? ''
-                };
-            } else {
-                title.textContent = 'เพิ่มอบรมใหม่';
-                form.reset();
-                currentTrainingInitialData = null;
-                fillTrainingFormFields({ requiredQuota: '' });
-            }
-
-            modal.classList.add('show');
-        }
-
-        function closeTrainingModal() {
-            document.getElementById('training-modal').classList.remove('show');
-            currentTrainingId = null;
-            currentTrainingInitialData = null;
-        }
-
-        function editTraining(id) {
-            openTrainingModal(id);
-        }
-
-        function fillTeacherFormFields(data = {}) {
-            document.getElementById('teacher-name').value = data.name || '';
-            document.getElementById('teacher-position').value = data.position || '';
-            const dutyScore = parseInt(data.dutyQueueScore, 10);
-            const trainingScore = parseInt(data.trainingQueueScore, 10);
-            document.getElementById('teacher-duty-queue-score').value = Number.isFinite(dutyScore) ? dutyScore : 0;
-            document.getElementById('teacher-training-queue-score').value = Number.isFinite(trainingScore) ? trainingScore : 0;
-        }
-
-        function resetTeacherForm() {
-            const form = document.getElementById('teacher-form');
-            if (currentTeacherInitialData) {
-                fillTeacherFormFields(currentTeacherInitialData);
-            } else if (form) {
-                form.reset();
-                fillTeacherFormFields({ dutyQueueScore: 0, trainingQueueScore: 0 });
-            }
-        }
-
-        function openTeacherModal(teacherId = null) {
-            currentTeacherId = teacherId;
-            const modal = document.getElementById('teacher-modal');
-            const title = document.getElementById('teacher-modal-title');
-            const form = document.getElementById('teacher-form');
-
-            if (teacherId) {
-                const teacher = getTeacherById(teacherId);
-                title.textContent = 'แก้ไขข้อมูลครู';
-                const dutyScore = getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY);
-                const trainingScore = getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING);
-                fillTeacherFormFields({
-                    name: teacher.name,
-                    position: teacher.position,
-                    dutyQueueScore: dutyScore,
-                    trainingQueueScore: trainingScore
-                });
-                currentTeacherInitialData = {
-                    name: teacher.name,
-                    position: teacher.position,
-                    dutyQueueScore: dutyScore,
-                    trainingQueueScore: trainingScore
-                };
-            } else {
-                title.textContent = 'เพิ่มครูใหม่';
-                form.reset();
-                currentTeacherInitialData = null;
-                fillTeacherFormFields({ dutyQueueScore: 0, trainingQueueScore: 0 });
-            }
-
-            modal.classList.add('show');
-        }
-
-        function closeTeacherModal() {
-            document.getElementById('teacher-modal').classList.remove('show');
-            currentTeacherId = null;
-            currentTeacherInitialData = null;
-        }
-
-        function openAutoAssignModal(eventId, queueType = QUEUE_TYPES.DUTY) {
-            currentEventQueueType = queueType || QUEUE_TYPES.DUTY;
-            const event = getEventById(eventId, currentEventQueueType);
-            if (!event || event.status !== 'pending') return;
-
-            // Get teachers sorted by queue score (lowest first)
-            const sortedTeachers = [...teachers].sort((a, b) => compareTeachersForQueue(a, b, currentEventQueueType));
-            const suggestedTeachers = sortedTeachers.slice(0, event.requiredQuota);
-
-            const content = document.getElementById('auto-assign-content');
-            const queueAction = currentEventQueueType === QUEUE_TYPES.TRAINING ? 'เข้ารับการอบรม' : 'ออกงาน';
-            const scoreDescriptor = currentEventQueueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน';
-            content.innerHTML = `
-                <div class="mb-4">
-                    <h4 class="font-semibold text-gray-800 mb-2">${getQueueDisplayName(currentEventQueueType)}: ${event.eventName}</h4>
-                    <p class="text-sm text-gray-600">วันที่: ${formatDateThai(event.date)} เวลา: ${event.time}</p>
-                    <p class="text-sm text-gray-600">ต้องการครู: ${event.requiredQuota} คน</p>
-                </div>
-
-                <div class="mb-6">
-                    <h5 class="font-medium text-gray-800 mb-3">เลือกครูที่จะ${queueAction} (คลิกเพื่อเลือก/ยกเลิก):</h5>
-                    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-80 overflow-y-auto">
-                        ${sortedTeachers.map((teacher, index) => {
-                            const isSelected = index < event.requiredQuota;
-                            const isRecommended = index < event.requiredQuota;
-                            return `
-                                <div class="teacher-select-card p-3 border-2 rounded-lg cursor-pointer transition-all duration-200 ${isSelected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white hover:border-blue-300'}" 
-                                     data-teacher-id="${teacher.teacherId}" 
-                                     onclick="toggleTeacherSelection(${teacher.teacherId}, ${event.requiredQuota})">
-                                            <div class="flex flex-col items-center text-center">
-                                                ${createTeacherAvatar(teacher)}
-                                                <div class="mt-2">
-                                                    <p class="font-medium text-sm">${teacher.name}</p>
-                                                    <p class="text-xs text-gray-600">${teacher.position}</p>
-                                                    <div class="flex items-center justify-center mt-1">
-                                                        <span class="queue-score text-xs">${getTeacherQueueScore(teacher, currentEventQueueType)}</span>
-                                                        ${isRecommended ? '<span class="ml-1 text-xs">⭐</span>' : ''}
-                                                    </div>
-                                                    <p class="text-xs text-gray-500">งาน ${teacher.dutyDuties ?? 0} | อบรม ${teacher.trainingDuties ?? 0}</p>
                                                 </div>
                                                 <div class="selection-indicator mt-2 w-4 h-4 rounded-full border-2 ${isSelected ? 'bg-green-500 border-green-500' : 'border-gray-300'}">
                                                     ${isSelected ? '<span class="text-white text-xs">✓</span>' : ''}
@@ -3364,8 +2865,20 @@
                                         </div>
                                     </div>
                                 </div>
-                            `;
-                        }).join('')}
+                            </div>
+                        ` : `
+                            <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <p class="text-sm text-yellow-700 text-center">ยังไม่ได้จัดคิว</p>
+                            </div>
+                        `}
+
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="editTraining(${tr.trainingId})" class="btn-primary text-sm flex-1 min-w-[140px]"><span class="mr-1">✏️</span>แก้ไข</button>
+                            ${tr.status === 'pending'
+                                ? `<button onclick="openTrainingAutoAssignModal(${tr.trainingId})" class='btn-success text-sm flex-1 min-w-[140px]'><span class="mr-1">🎯</span>จัดคิว</button>`
+                                : `<button onclick="openTrainingSubstitutionModal(${tr.trainingId})" class='btn-danger text-sm flex-1 min-w-[140px]'><span class="mr-1">🔄</span>แทน</button>`}
+                            <button onclick="deleteQueueItem(${tr.trainingId}, '${QUEUE_TYPES.TRAINING}')" class="btn-delete text-sm flex-1 min-w-[140px]"><span class="mr-1">🗑️</span>ลบ</button>
+                        </div>
                     </div>
                     <div class="mt-3 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
                         <p><span class="font-medium">💡 คำแนะนำ:</span> เลือกตามคะแนนอบรมต่ำสุดก่อน</p>
@@ -3374,19 +2887,346 @@
                 </div>
             `;
 
-            updateSelectedCount(tr.requiredQuota);
-            document.getElementById('confirm-auto-assign').onclick = () => confirmTrainingAutoAssignFromSelection(trainingId);
-            document.getElementById('auto-assign-modal').classList.add('show');
+            container.innerHTML = html || '<p class="text-gray-500 text-center py-8">ยังไม่มีข้อมูลการอบรม</p>';
         }
 
-        function confirmTrainingAutoAssignFromSelection(trainingId) {
-            const selectedCards = document.querySelectorAll('.teacher-select-card.border-green-500');
-            const selectedIds = Array.from(selectedCards).map(card => parseInt(card.getAttribute('data-teacher-id')));
-            const tr = trainings.find(t => t.trainingId === trainingId);
-
-            if (!tr) {
-                alert('ไม่พบข้อมูลอบรมที่เลือก');
+        // Teachers table rendering
+        function renderTeachersTable() {
+            const tbody = document.getElementById('teachers-table-body');
+            if (!tbody) {
                 return;
+            }
+
+            const sortedTeachers = [...teachers]
+                .map(teacher => {
+                    ensureTeacherStats(teacher);
+                    return teacher;
+                })
+                .sort((a, b) => {
+                    const dutyDiff = getTeacherQueueScore(a, QUEUE_TYPES.DUTY) - getTeacherQueueScore(b, QUEUE_TYPES.DUTY);
+                    if (dutyDiff !== 0) {
+                        return dutyDiff;
+                    }
+                    const trainingDiff = getTeacherQueueScore(a, QUEUE_TYPES.TRAINING) - getTeacherQueueScore(b, QUEUE_TYPES.TRAINING);
+                    if (trainingDiff !== 0) {
+                        return trainingDiff;
+                    }
+                    const dateA = a.lastEventDate ? new Date(a.lastEventDate) : new Date(0);
+                    const dateB = b.lastEventDate ? new Date(b.lastEventDate) : new Date(0);
+                    return dateA - dateB;
+                })
+                .map((teacher, index) => ({ ...teacher, queueRank: index + 1 }));
+
+            if (sortedTeachers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-gray-500">ยังไม่มีข้อมูลครู</td></tr>';
+                renderTeacherDetail(null);
+                return;
+            }
+
+            if (!selectedTeacherId || !sortedTeachers.some(t => t.teacherId === selectedTeacherId)) {
+                selectedTeacherId = sortedTeachers[0].teacherId;
+            }
+
+            tbody.innerHTML = sortedTeachers.map(teacher => {
+                const isActive = teacher.teacherId === selectedTeacherId;
+                return `
+                    <tr class="${isActive ? 'is-active' : ''}" onclick="showTeacherDetail(${teacher.teacherId})">
+                        <td class="font-medium text-gray-700">${teacher.queueRank}</td>
+                        <td>
+                            <div class="flex items-center space-x-3">
+                                ${createTeacherAvatar(teacher)}
+                                <div>
+                                    <p class="font-semibold text-gray-800">${teacher.name}</p>
+                                    ${teacher.lastEventDate ? `<p class="text-xs text-gray-500">ล่าสุด ${formatDateThai(teacher.lastEventDate)}</p>` : ''}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-sm text-gray-600">${teacher.position}</td>
+                        <td class="font-semibold text-[#5b2d38]">${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)}</td>
+                        <td class="font-semibold text-[#245f7a]">${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</td>
+                        <td class="text-center">${teacher.dutyDuties ?? 0}</td>
+                        <td class="text-center">${teacher.trainingDuties ?? 0}</td>
+                        <td class="text-center">${teacher.swapCount ?? 0}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            const activeTeacher = sortedTeachers.find(t => t.teacherId === selectedTeacherId) || sortedTeachers[0];
+            renderTeacherDetail(activeTeacher);
+        }
+
+        function showTeacherDetail(teacherId) {
+            selectedTeacherId = teacherId;
+            renderTeachersTable();
+        }
+
+        function renderTeacherDetail(teacher) {
+            const panel = document.getElementById('teacher-detail-panel');
+            if (!panel) {
+                return;
+            }
+
+            if (!teacher) {
+                panel.innerHTML = '<p class="text-sm text-gray-500">ยังไม่มีข้อมูลครูให้แสดง</p>';
+                return;
+            }
+
+            ensureTeacherStats(teacher);
+            const relatedEvents = events
+                .filter(event => Array.isArray(event.assignedTeachers) && event.assignedTeachers.includes(teacher.teacherId))
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const relatedTrainingEvents = trainings
+                .filter(event => Array.isArray(event.assignedTeachers) && event.assignedTeachers.includes(teacher.teacherId))
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const totalEvent = relatedEvents.length;
+            const totalTraining = relatedTrainingEvents.length;
+            const totalAll = totalEvent + totalTraining;
+
+            const highlightEvents = relatedEvents.slice(0, 3).map(event => {
+                const statusLabel = event.status === 'assigned' ? 'จัดคิวแล้ว' : event.status === 'completed' ? 'เสร็จสิ้น' : 'รอจัดคิว';
+                return `
+                    <li class="p-3 rounded-lg border border-gray-200 bg-gray-50">
+                        <p class="font-medium text-gray-800">${event.eventName}</p>
+                        <p class="text-xs text-gray-500">${formatDateThai(event.date)} • ${event.time}</p>
+                        <p class="text-xs text-gray-500">สถานที่: ${event.location}</p>
+                        <span class="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-full" style="background: rgba(137, 77, 91, 0.12); color: #5b2d38;">${statusLabel}</span>
+                    </li>
+                `;
+            }).join('');
+
+                const highlightTraining = relatedTrainingEvents.slice(0, 3).map(event => {
+                    const statusLabel = event.status === 'assigned' ? 'จัดคิวแล้ว' : event.status === 'completed' ? 'เสร็จสิ้น' : 'รอจัดคิว';
+                    return `
+                        <li class="p-3 rounded-lg border border-blue-200 bg-blue-50">
+                            <p class="font-medium text-gray-800">${event.trainingName || event.eventName}</p>
+                            <p class="text-xs text-gray-500">${formatDateRangeThai(event.startDate || event.date, event.endDate || event.date)} • ${event.time}</p>
+                            <p class="text-xs text-gray-500">สถานที่: ${event.location}</p>
+                            <span class="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-full" style="background: rgba(196, 233, 248, 0.6); color: #245f7a;">${statusLabel}</span>
+                        </li>
+                    `;
+            }).join('');
+
+            panel.innerHTML = `
+                <div class="flex items-center gap-4">
+                    ${createTeacherAvatar(teacher, true)}
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-800">${teacher.name}</h3>
+                        <p class="text-sm text-gray-600">${teacher.position}</p>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            <span class="queue-score">คะแนนออกงาน ${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)}</span>
+                            <span class="queue-score" style="background: rgba(36, 95, 122, 0.1); color: #245f7a;">คะแนนอบรม ${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="teacher-detail-card mt-4">
+                    <div class="detail-row"><span>ลำดับคิวปัจจุบัน</span><span>${teacher.queueRank ?? '-'}</span></div>
+                    <div class="detail-row"><span>คะแนนออกงาน</span><span>${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)}</span></div>
+                    <div class="detail-row"><span>คะแนนอบรม</span><span>${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</span></div>
+                    <div class="detail-row"><span>รวมทั้งหมด (งาน+อบรม)</span><span>${totalAll} ครั้ง</span></div>
+                    <div class="detail-row"><span>งาน (Event)</span><span>${totalEvent} ครั้ง</span></div>
+                    <div class="detail-row"><span>อบรม (Training)</span><span>${totalTraining} ครั้ง</span></div>
+                    <div class="detail-row"><span>ออกงานทั้งหมด</span><span>${teacher.dutyDuties ?? 0} ครั้ง</span></div>
+                    <div class="detail-row"><span>อบรมทั้งหมด</span><span>${teacher.trainingDuties ?? 0} ครั้ง</span></div>
+                    <div class="detail-row"><span>แทนงาน</span><span>${teacher.dutySwapCount ?? 0} ครั้ง</span></div>
+                    <div class="detail-row"><span>แทนอบรม</span><span>${teacher.trainingSwapCount ?? 0} ครั้ง</span></div>
+                    <div class="detail-row"><span>รวมการแทน</span><span>${teacher.swapCount ?? 0} ครั้ง</span></div>
+                    <div class="detail-row"><span>ออกงานล่าสุด</span><span>${teacher.lastDutyDate ? formatDateThai(teacher.lastDutyDate) : '-'}</span></div>
+                    <div class="detail-row"><span>อบรมล่าสุด</span><span>${teacher.lastTrainingDate ? formatDateThai(teacher.lastTrainingDate) : '-'}</span></div>
+                </div>
+                <div class="mt-4">
+                    <h4 class="font-semibold text-gray-800">งานที่เกี่ยวข้องล่าสุด</h4>
+                    ${relatedEvents.length > 0 ? `<ul class="mt-2 space-y-2">${highlightEvents}</ul>` : '<p class="text-sm text-gray-500 mt-2">ยังไม่มีประวัติงาน</p>'}
+                </div>
+                <div class="mt-4">
+                    <h4 class="font-semibold text-gray-800">การอบรมที่เกี่ยวข้องล่าสุด</h4>
+                    ${relatedTrainingEvents.length > 0 ? `<ul class="mt-2 space-y-2">${highlightTraining}</ul>` : '<p class="text-sm text-gray-500 mt-2">ยังไม่มีประวัติการอบรม</p>'}
+                </div>
+                <div class="flex gap-3 mt-6">
+                    <button class="btn-primary flex-1" onclick="editTeacher(${teacher.teacherId})">
+                        <span class="mr-1">✏️</span>แก้ไขข้อมูล
+                    </button>
+                    <button class="btn-success flex-1" onclick="adjustQueueScore(${teacher.teacherId})">
+                        <span class="mr-1">⚖️</span>ปรับคะแนนคิว
+                    </button>
+                    <button class="btn-delete flex-1" onclick="deleteTeacher(${teacher.teacherId})">
+                        <span class="mr-1">🗑️</span>ลบครู
+                    </button>
+                </div>
+            `;
+        }
+
+        // History rendering
+        function renderHistory() {
+            // Duty distribution
+            const sortedTeachers = [...teachers].map(ensureTeacherStats).sort((a, b) => (a.totalDuties || 0) - (b.totalDuties || 0));
+            const dutyDistributionHtml = sortedTeachers.map(teacher => `
+                <div class="flex justify-between items-center py-2 border-b border-gray-200">
+                    <div class="flex items-center">
+                        ${createTeacherAvatar(teacher)}
+                        <span class="font-medium ml-3">${teacher.name}</span>
+                    </div>
+                    <span class="text-gray-600">${teacher.dutyDuties ?? 0} งาน | ${teacher.trainingDuties ?? 0} อบรม</span>
+                </div>
+            `).join('');
+            document.getElementById('duty-distribution').innerHTML = dutyDistributionHtml;
+
+            // Substitution stats
+            const substitutionStats = teachers.map(ensureTeacherStats).filter(t => (t.swapCount || 0) > 0);
+            const substitutionStatsHtml = substitutionStats.length > 0 ? substitutionStats.map(teacher => `
+                <div class="flex justify-between items-center py-2 border-b border-gray-200">
+                    <div class="flex items-center">
+                        ${createTeacherAvatar(teacher)}
+                        <span class="font-medium ml-3">${teacher.name}</span>
+                    </div>
+                    <span class="font-semibold" style="color: var(--secondary-bg);">${teacher.swapCount} ครั้ง (งาน ${teacher.dutySwapCount ?? 0} | อบรม ${teacher.trainingSwapCount ?? 0})</span>
+                </div>
+            `).join('') : '<p class="text-gray-500 text-center py-4">ยังไม่มีการแทน</p>';
+            document.getElementById('substitution-stats').innerHTML = substitutionStatsHtml;
+
+            // Activity log
+            const activityLogHtml = activityLog.length > 0 ? activityLog.map(log => {
+                const logClass = log.type === 'auto-assign' ? 'auto-assign' :
+                               log.type === 'manual-edit' ? 'manual-edit' : 'substitution';
+                const date = formatDateTimeThai(log.timestamp);
+                
+                return `
+                    <div class="log-entry ${logClass}">
+                        <div class="flex justify-between items-start mb-1">
+                            <p class="font-medium text-gray-800">${log.description}</p>
+                            <span class="text-xs text-gray-500">${date}</span>
+                        </div>
+                        ${log.details ? `<p class="text-sm text-gray-600">${log.details}</p>` : ''}
+                        <p class="text-xs text-gray-500 mt-1">โดย: ${log.admin}</p>
+                    </div>
+                `;
+            }).join('') : '<p class="text-gray-500 text-center py-4">ยังไม่มีประวัติการดำเนินการ</p>';
+            document.getElementById('activity-log').innerHTML = activityLogHtml;
+        }
+
+        // Modal functions
+        function renderEventAssignmentSummary(event) {
+            const summary = document.getElementById('event-assignment-summary');
+            const list = document.getElementById('event-assignment-list');
+
+            if (!summary || !list) {
+                return;
+            }
+
+            if (!event) {
+                summary.classList.add('hidden');
+                list.innerHTML = '';
+                return;
+            }
+
+            const slots = getEventAssignmentSlots(event);
+            summary.classList.remove('hidden');
+
+            if (!slots.length) {
+                list.innerHTML = '<p class="text-sm text-gray-500">ยังไม่มีข้อมูลการจัดคิวสำหรับงานนี้</p>';
+                return;
+            }
+
+            list.innerHTML = slots.map((slot, index) => {
+                const originalTeacher = slot.originalTeacherId ? getTeacherById(slot.originalTeacherId) : null;
+                const currentTeacher = slot.currentTeacherId ? getTeacherById(slot.currentTeacherId) : null;
+                const isSubstituted = slot.originalTeacherId && slot.currentTeacherId && slot.originalTeacherId !== slot.currentTeacherId;
+
+                const originalName = originalTeacher ? originalTeacher.name : 'ไม่ระบุ';
+                const currentName = currentTeacher ? currentTeacher.name : 'ไม่พบข้อมูล';
+                const currentScore = currentTeacher ? getTeacherQueueScore(currentTeacher, currentEventQueueType) : '-';
+                const scoreLabel = currentEventQueueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน';
+
+                return `
+                    <div class="p-3 rounded-lg border ${isSubstituted ? 'border-[#E1B1C1] bg-[#fdf6f8]' : 'border-gray-200 bg-white'}">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center space-x-3">
+                                ${createTeacherAvatar(originalTeacher)}
+                                <div>
+                                    <p class="text-xs text-gray-500 uppercase tracking-wide">คิวที่ ${index + 1}</p>
+                                    <p class="text-sm font-medium text-gray-800">${originalName}</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                ${createTeacherAvatar(currentTeacher)}
+                                <div class="text-right">
+                                    <p class="text-xs text-gray-500 uppercase tracking-wide">ผู้ปฏิบัติจริง</p>
+                                    <p class="text-sm font-semibold ${isSubstituted ? 'text-[#894D5B]' : 'text-gray-800'}">${currentName}</p>
+                                    <p class="text-xs text-gray-500">${scoreLabel} ${currentScore}</p>
+                                </div>
+                            </div>
+                        </div>
+                        ${isSubstituted
+                            ? `<p class="text-xs text-[#894D5B] mt-2">แทนคิวของ ${originalName}</p>`
+                            : '<p class="text-xs text-gray-500 mt-2">ตรงตามคิวเดิม</p>'}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function fillEventFormFields(data = {}) {
+            document.getElementById('event-name').value = data.eventName || '';
+            document.getElementById('event-details').value = data.details || '';
+            document.getElementById('event-date').value = data.date || '';
+            document.getElementById('event-start-time').value = data.startTime || '';
+            document.getElementById('event-end-time').value = data.endTime || '';
+            document.getElementById('event-location').value = data.location || '';
+            const quota = parseInt(data.requiredQuota, 10);
+            document.getElementById('event-quota').value = Number.isFinite(quota) ? quota : '';
+            const latInput = document.getElementById('event-location-lat');
+            const lngInput = document.getElementById('event-location-lng');
+            if (latInput) latInput.value = data.locationLat ?? '';
+            if (lngInput) lngInput.value = data.locationLng ?? '';
+        }
+
+        function resetEventForm() {
+            const form = document.getElementById('event-form');
+            if (currentEventInitialData) {
+                fillEventFormFields(currentEventInitialData);
+            } else if (form) {
+                form.reset();
+                fillEventFormFields({ requiredQuota: '' });
+            }
+
+            renderEventAssignmentSummary(currentEventId ? getEventById(currentEventId, currentEventQueueType) : null);
+        }
+
+        function openEventModal(eventId = null, queueType = QUEUE_TYPES.DUTY) {
+            currentEventId = eventId;
+            currentEventQueueType = queueType || QUEUE_TYPES.DUTY;
+
+            const modal = document.getElementById('event-modal');
+            const title = document.getElementById('event-modal-title');
+            const form = document.getElementById('event-form');
+            const queueLabel = getQueueDisplayName(currentEventQueueType);
+
+            if (eventId) {
+                const event = getEventById(eventId, currentEventQueueType);
+                if (!event) {
+                    console.error('ไม่พบข้อมูลงานสำหรับคิว', currentEventQueueType, 'รหัส', eventId);
+                    return;
+                }
+                title.textContent = `แก้ไข${queueLabel}`;
+                fillEventFormFields(event);
+                currentEventInitialData = {
+                    eventName: event.eventName || '',
+                    details: event.details || '',
+                    date: event.date || '',
+                    startTime: event.startTime || '',
+                    endTime: event.endTime || '',
+                    location: event.location || '',
+                    locationLat: event.locationLat ?? '',
+                    locationLng: event.locationLng ?? '',
+                    requiredQuota: event.requiredQuota ?? ''
+                };
+                renderEventAssignmentSummary(event);
+            } else {
+                title.textContent = `เพิ่ม${queueLabel}ใหม่`;
+                form.reset();
+                currentEventInitialData = null;
+                fillEventFormFields({ requiredQuota: '' });
+                renderEventAssignmentSummary(null);
             }
 
         function updateSelectedCount(requiredQuota) {
@@ -3398,64 +3238,151 @@
             }
         }
 
-        function confirmAutoAssignFromSelection(eventId, queueType = currentEventQueueType) {
-            const selectedCards = document.querySelectorAll('.teacher-select-card.border-green-500');
-            const selectedTeacherIds = Array.from(selectedCards).map(card =>
-                parseInt(card.getAttribute('data-teacher-id'))
-            );
+        function closeEventModal() {
+            document.getElementById('event-modal').classList.remove('show');
+            currentEventId = null;
+            currentEventInitialData = null;
+            renderEventAssignmentSummary(null);
+        }
+
+        function fillTrainingFormFields(data = {}) {
+            document.getElementById('training-name').value = data.trainingName || '';
+            document.getElementById('training-details').value = data.details || '';
+            document.getElementById('training-start-date').value = data.startDate || data.date || '';
+            document.getElementById('training-end-date').value = data.endDate || data.date || '';
+            document.getElementById('training-start-time').value = data.startTime || '';
+            document.getElementById('training-end-time').value = data.endTime || '';
+            document.getElementById('training-location').value = data.location || '';
+            const quota = parseInt(data.requiredQuota, 10);
+            document.getElementById('training-quota').value = Number.isFinite(quota) ? quota : '';
+            const latInput = document.getElementById('training-location-lat');
+            const lngInput = document.getElementById('training-location-lng');
+            if (latInput) latInput.value = data.locationLat ?? '';
+            if (lngInput) lngInput.value = data.locationLng ?? '';
+        }
+
+        function resetTrainingForm() {
+            const form = document.getElementById('training-form');
+            if (currentTrainingInitialData) {
+                fillTrainingFormFields(currentTrainingInitialData);
+            } else if (form) {
+                form.reset();
+                fillTrainingFormFields({ requiredQuota: '' });
+            }
+        }
+
+        function openTrainingModal(trainingId = null) {
+            currentTrainingId = trainingId;
+            const modal = document.getElementById('training-modal');
+            const title = document.getElementById('training-modal-title');
+            const form = document.getElementById('training-form');
+
+            const latInput = document.getElementById('training-location-lat');
+            const lngInput = document.getElementById('training-location-lng');
+
+            if (trainingId) {
+                const tr = trainings.find(t => t.trainingId === trainingId);
+                if (!tr) {
+                    console.error('ไม่พบข้อมูลอบรมรหัส', trainingId);
+                    return;
+                }
+                title.textContent = 'แก้ไขอบรม';
+                fillTrainingFormFields(tr);
+                currentTrainingInitialData = {
+                    trainingName: tr.trainingName || '',
+                    details: tr.details || '',
+                    startDate: tr.startDate || tr.date || '',
+                    endDate: tr.endDate || tr.date || '',
+                    startTime: tr.startTime || '',
+                    endTime: tr.endTime || '',
+                    location: tr.location || '',
+                    locationLat: tr.locationLat ?? '',
+                    locationLng: tr.locationLng ?? '',
+                    requiredQuota: tr.requiredQuota ?? ''
+                };
+            } else {
+                title.textContent = 'เพิ่มอบรมใหม่';
+                form.reset();
+                currentTrainingInitialData = null;
+                fillTrainingFormFields({ requiredQuota: '' });
+            }
+
+            modal.classList.add('show');
+        }
+
+        function closeTrainingModal() {
+            document.getElementById('training-modal').classList.remove('show');
+            currentTrainingId = null;
+            currentTrainingInitialData = null;
+        }
+
+        function editTraining(id) {
+            openTrainingModal(id);
+        }
+
+        function fillTeacherFormFields(data = {}) {
+            document.getElementById('teacher-name').value = data.name || '';
+            document.getElementById('teacher-position').value = data.position || '';
+            const dutyScore = parseInt(data.dutyQueueScore, 10);
+            const trainingScore = parseInt(data.trainingQueueScore, 10);
+            document.getElementById('teacher-duty-queue-score').value = Number.isFinite(dutyScore) ? dutyScore : 0;
+            document.getElementById('teacher-training-queue-score').value = Number.isFinite(trainingScore) ? trainingScore : 0;
+        }
+
+        function resetTeacherForm() {
+            const form = document.getElementById('teacher-form');
+            if (currentTeacherInitialData) {
+                fillTeacherFormFields(currentTeacherInitialData);
+            } else if (form) {
+                form.reset();
+                fillTeacherFormFields({ dutyQueueScore: 0, trainingQueueScore: 0 });
+            }
+        }
 
             const event = getEventById(eventId, queueType);
 
-            if (selectedTeacherIds.length !== event.requiredQuota) {
-                alert(`กรุณาเลือกครูให้ครบ ${event.requiredQuota} คน (เลือกแล้ว ${selectedTeacherIds.length} คน)`);
-                return;
+            if (teacherId) {
+                const teacher = getTeacherById(teacherId);
+                title.textContent = 'แก้ไขข้อมูลครู';
+                const dutyScore = getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY);
+                const trainingScore = getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING);
+                fillTeacherFormFields({
+                    name: teacher.name,
+                    position: teacher.position,
+                    dutyQueueScore: dutyScore,
+                    trainingQueueScore: trainingScore
+                });
+                currentTeacherInitialData = {
+                    name: teacher.name,
+                    position: teacher.position,
+                    dutyQueueScore: dutyScore,
+                    trainingQueueScore: trainingScore
+                };
+            } else {
+                title.textContent = 'เพิ่มครูใหม่';
+                form.reset();
+                currentTeacherInitialData = null;
+                fillTeacherFormFields({ dutyQueueScore: 0, trainingQueueScore: 0 });
             }
 
             const selectedTeachers = selectedTeacherIds.map(id => getTeacherById(id));
             confirmAutoAssign(eventId, selectedTeachers, queueType);
         }
 
-        function closeAutoAssignModal() {
-            document.getElementById('auto-assign-modal').classList.remove('show');
+        function closeTeacherModal() {
+            document.getElementById('teacher-modal').classList.remove('show');
+            currentTeacherId = null;
+            currentTeacherInitialData = null;
         }
 
-        function confirmAutoAssign(eventId, selectedTeachers, queueType = currentEventQueueType) {
-            const event = getEventById(eventId, queueType);
-            const teacherIds = selectedTeachers.map(t => t.teacherId);
+        function openAutoAssignModal(eventId, queueType = QUEUE_TYPES.DUTY) {
+            currentEventQueueType = queueType || QUEUE_TYPES.DUTY;
+            const event = getEventById(eventId, currentEventQueueType);
+            if (!event || event.status !== 'pending') return;
 
-            // Update event
-            event.assignedTeachers = teacherIds;
-            event.assignmentSlots = createAssignmentSlotsFromIds(teacherIds);
-            event.status = 'assigned';
-            ensureEventAssignments(event);
-
-            // Update teacher stats - ระบบใหม่: เพิ่มคะแนนตามประเภทคิว
-            selectedTeachers.forEach(teacher => {
-                ensureTeacherStats(teacher);
-                if (queueType === QUEUE_TYPES.TRAINING) {
-                    teacher.trainingDuties = (teacher.trainingDuties || 0) + 1;
-                    teacher.lastTrainingDate = normalizeDateString(event.date);
-                } else {
-                    teacher.dutyDuties = (teacher.dutyDuties || 0) + 1;
-                    teacher.lastDutyDate = normalizeDateString(event.date);
-                }
-                teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
-                adjustTeacherQueueScore(teacher, queueType, 15);
-                teacher.lastEventDate = latestDateString(teacher.lastDutyDate, teacher.lastTrainingDate);
-            });
-
-            // Add activity log
-            const teacherNames = selectedTeachers.map(t => t.name).join(', ');
-            addActivityLog(
-                'auto-assign',
-                `จัดคิวอัตโนมัติสำหรับ${getQueueDisplayName(queueType)} "${getQueueItemName(event, queueType)}"`,
-                `ครูที่ได้รับมอบหมาย: ${teacherNames}`
-            );
-
-            saveData();
-            closeAutoAssignModal();
-            showView(getQueueView(queueType));
-        }
+            // Get teachers sorted by queue score (lowest first)
+            const sortedTeachers = [...teachers].sort((a, b) => compareTeachersForQueue(a, b, currentEventQueueType));
+            const suggestedTeachers = sortedTeachers.slice(0, event.requiredQuota);
 
         function openTrainingAutoAssignModal(trainingId) {
             currentEventQueueType = QUEUE_TYPES.TRAINING;
@@ -3465,49 +3392,54 @@
 
             const sortedTeachers = [...teachers].sort((a, b) => compareTeachersForQueue(a, b, QUEUE_TYPES.TRAINING));
             const content = document.getElementById('auto-assign-content');
-
+            const queueAction = currentEventQueueType === QUEUE_TYPES.TRAINING ? 'เข้ารับการอบรม' : 'ออกงาน';
+            const scoreDescriptor = currentEventQueueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน';
             content.innerHTML = `
                 <div class="mb-4">
-                    <h4 class="font-semibold text-gray-800 mb-2">อบรม: ${tr.trainingName}</h4>
-                    <p class="text-sm text-gray-600">วันที่: ${formatDateRangeThai(tr.startDate || tr.date, tr.endDate || tr.date)} เวลา: ${tr.time}</p>
-                    <p class="text-sm text-gray-600">ต้องการครู: ${tr.requiredQuota} คน</p>
+                    <h4 class="font-semibold text-gray-800 mb-2">${getQueueDisplayName(currentEventQueueType)}: ${event.eventName}</h4>
+                    <p class="text-sm text-gray-600">วันที่: ${formatDateThai(event.date)} เวลา: ${event.time}</p>
+                    <p class="text-sm text-gray-600">ต้องการครู: ${event.requiredQuota} คน</p>
                 </div>
+
                 <div class="mb-6">
-                    <h5 class="font-medium text-gray-800 mb-3">เลือกครูที่จะเข้ารับการอบรม (คลิกเพื่อเลือก/ยกเลิก):</h5>
+                    <h5 class="font-medium text-gray-800 mb-3">เลือกครูที่จะ${queueAction} (คลิกเพื่อเลือก/ยกเลิก):</h5>
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-80 overflow-y-auto">
                         ${sortedTeachers.map((teacher, index) => {
                             const isSelected = index < tr.requiredQuota;
                             return `
-                                <div class="teacher-select-card p-3 border-2 rounded-lg cursor-pointer ${isSelected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}"
-                                     data-teacher-id="${teacher.teacherId}"
-                                     onclick="toggleTeacherSelection(${teacher.teacherId}, ${tr.requiredQuota})">
-                                    <div class="flex flex-col items-center text-center">
-                                        ${createTeacherAvatar(teacher)}
-                                        <div class="mt-2">
-                                            <p class="font-medium text-sm">${teacher.name}</p>
-                                            <p class="text-xs text-gray-600">${teacher.position}</p>
-                                            <div class="flex items-center justify-center mt-1">
-                                                <span class="queue-score text-xs">${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</span>
-                                                ${index < tr.requiredQuota ? '<span class="ml-1 text-xs">⭐</span>' : ''}
-                                            </div>
-                                        </div>
-                                        <div class="selection-indicator mt-2 w-4 h-4 rounded-full border-2 ${isSelected ? 'bg-green-500 border-green-500' : 'border-gray-300'}">
-                                            ${isSelected ? '<span class="text-white text-xs">✓</span>' : ''}
-                                        </div>
+                                <div class="teacher-select-card p-3 border-2 rounded-lg cursor-pointer transition-all duration-200 ${isSelected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white hover:border-blue-300'}" 
+                                     data-teacher-id="${teacher.teacherId}" 
+                                     onclick="toggleTeacherSelection(${teacher.teacherId}, ${event.requiredQuota})">
+                                            <div class="flex flex-col items-center text-center">
+                                                ${createTeacherAvatar(teacher)}
+                                                <div class="mt-2">
+                                                    <p class="font-medium text-sm">${teacher.name}</p>
+                                                    <p class="text-xs text-gray-600">${teacher.position}</p>
+                                                    <div class="flex items-center justify-center mt-1">
+                                                        <span class="queue-score text-xs">${getTeacherQueueScore(teacher, currentEventQueueType)}</span>
+                                                        ${isRecommended ? '<span class="ml-1 text-xs">⭐</span>' : ''}
+                                                    </div>
+                                                    <p class="text-xs text-gray-500">งาน ${teacher.dutyDuties ?? 0} | อบรม ${teacher.trainingDuties ?? 0}</p>
+                                                </div>
+                                                <div class="selection-indicator mt-2 w-4 h-4 rounded-full border-2 ${isSelected ? 'bg-green-500 border-green-500' : 'border-gray-300'}">
+                                                    ${isSelected ? '<span class="text-white text-xs">✓</span>' : ''}
+                                                </div>
                                     </div>
                                 </div>
                             `;
                         }).join('')}
                     </div>
                     <div class="mt-3 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
-                        <p><span class="font-medium">💡 คำแนะนำ:</span> เลือกตามคะแนนอบรมต่ำสุดก่อน</p>
-                        <p class="mt-1"><span class="font-medium">เลือกแล้ว:</span> <span id="selected-count">${Math.min(tr.requiredQuota, sortedTeachers.length)}</span>/${tr.requiredQuota} คน</p>
+                        <p><span class="font-medium">💡 คำแนะนำ:</span> ครูที่มี ⭐ คือครูที่ระบบแนะนำตาม${scoreDescriptor}ต่ำสุด</p>
+                        <p class="mt-1"><span class="font-medium">เลือกแล้ว:</span> <span id="selected-count">0</span>/${event.requiredQuota} คน</p>
                     </div>
                 </div>
             `;
 
-            updateSelectedCount(tr.requiredQuota);
-            document.getElementById('confirm-auto-assign').onclick = () => confirmTrainingAutoAssignFromSelection(trainingId);
+            // Initialize selection count
+            updateSelectedCount(event.requiredQuota);
+
+            document.getElementById('confirm-auto-assign').onclick = () => confirmAutoAssignFromSelection(eventId, currentEventQueueType);
             document.getElementById('auto-assign-modal').classList.add('show');
         }
 
@@ -3521,14 +3453,10 @@
                 return;
             }
 
-        function updateSelectedCount(requiredQuota) {
-            const selectedCount = document.querySelectorAll('.teacher-select-card.border-green-500').length;
-            const countElement = document.getElementById('selected-count');
-            if (countElement) {
-                countElement.textContent = selectedCount;
-                countElement.style.color = selectedCount === requiredQuota ? '#059669' : '#dc2626';
+            if (selectedIds.length !== tr.requiredQuota) {
+                alert(`กรุณาเลือกครูให้ครบ ${tr.requiredQuota} คน (เลือกแล้ว ${selectedIds.length} คน)`);
+                return;
             }
-        }
 
         function confirmAutoAssignFromSelection(eventId, queueType = currentEventQueueType) {
             const selectedCards = document.querySelectorAll('.teacher-select-card.border-green-500');
@@ -3547,9 +3475,17 @@
             confirmAutoAssign(eventId, selectedTeachers, queueType);
         }
 
-        function closeAutoAssignModal() {
-            document.getElementById('auto-assign-modal').classList.remove('show');
-        }
+        function confirmTrainingAutoAssign(trainingId, selectedTeachers) {
+            const tr = trainings.find(t => t.trainingId === trainingId);
+            if (!tr) {
+                alert('ไม่พบข้อมูลอบรมที่เลือก');
+                return;
+            }
+
+            tr.assignedTeachers = selectedTeachers.map(t => t.teacherId);
+            tr.status = 'assigned';
+            tr.assignmentSlots = createAssignmentSlotsFromIds(tr.assignedTeachers);
+            ensureEventAssignments(tr);
 
         function confirmAutoAssign(eventId, selectedTeachers, queueType = currentEventQueueType) {
             const event = getEventById(eventId, queueType);
@@ -4316,22 +4252,201 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
   <script>
    (function () {
-    try {
-     if (window.firebase && firebase.auth) {
-      firebase.auth().onAuthStateChanged(function (u) {
-       console.log('[Auth]', u ? 'SIGNED-IN' : 'SIGNED-OUT', u || null);
-      });
-      firebase.auth().signInAnonymously()
-       .then(() => console.log('[Auth] Anonymous signed in'))
-       .catch((err) => console.error('[Auth] anonymous failed', err));
-     }
-    } catch (e) {
-     console.error('Auth bootstrap failed:', e);
+    if (typeof firebase === 'undefined') {
+     console.warn('Firebase compat SDK is not available yet.');
+     return;
     }
+
+    const compatConfig = window.firebaseAppConfig || {
+     apiKey: 'AIzaSyDv--hw2BWKE-NTFrCMpTNz9LEzGK8l5PE',
+     authDomain: 'thaigogo-e9112.firebaseapp.com',
+     projectId: 'thaigogo-e9112',
+     storageBucket: 'thaigogo-e9112.firebasestorage.app',
+     messagingSenderId: '820257616141',
+     appId: '1:820257616141:web:c92cf50ae5e05491fb4044',
+     measurementId: 'G-4FX435MNDC'
+    };
+
+    let app;
+    try {
+     if (firebase.apps && firebase.apps.length) {
+      app = firebase.app();
+     } else {
+      app = firebase.initializeApp(compatConfig);
+     }
+    } catch (error) {
+     console.error('Firebase compat initialization failed:', error);
+     if (typeof window.notifyFirebaseInitError === 'function') {
+      window.notifyFirebaseInitError(error);
+     }
+     return;
+    }
+
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    function ensureAuth() {
+     if (auth.currentUser) {
+      return Promise.resolve(auth.currentUser);
+     }
+
+     let unsubscribe = function () {};
+
+     return new Promise((resolve, reject) => {
+      unsubscribe = auth.onAuthStateChanged(
+       (user) => {
+        if (user) {
+         unsubscribe();
+         resolve(user);
+        }
+       },
+       (error) => {
+        console.error('[Firebase compat] auth observer error:', error);
+        unsubscribe();
+        reject(error);
+       }
+      );
+
+      auth
+       .signInAnonymously()
+       .catch((error) => {
+        console.error('[Firebase compat] anonymous sign-in failed:', error);
+        if (typeof showFirebaseStatus === 'function') {
+         showFirebaseStatus('error', `เข้าสู่ระบบ Firebase ไม่สำเร็จ: ${extractFirebaseMessage(error)}`, true);
+        }
+        unsubscribe();
+        reject(error);
+       });
+     });
+    }
+
+    const compatHelpers = {
+     __source: 'compat',
+     async get(path = '') {
+      await ensureAuth();
+      const seg = path.split('/').filter(Boolean);
+
+      if (seg.length === 1) {
+       const key = seg[0];
+       if (key === 'config') {
+        const snap = await db.collection('config').doc('app').get();
+        return snap.exists ? snap.data() : null;
+       }
+       if (key === 'teachers') {
+        const snap = await db.collection('teachers').orderBy('teacherId', 'asc').get();
+        return snap.docs.map((d) => d.data());
+       }
+       if (key === 'events') {
+        const snap = await db.collection('events').orderBy('eventId', 'asc').get();
+        return snap.docs.map((d) => d.data());
+       }
+       if (key === 'trainings') {
+        const snap = await db.collection('trainings').orderBy('trainingId', 'asc').get();
+        return snap.docs.map((d) => d.data());
+       }
+       if (key === 'activityLog') {
+        const snap = await db.collection('activityLog').orderBy('timestamp', 'desc').get();
+        return snap.docs.map((d) => d.data());
+       }
+      }
+
+      if (seg.length === 2) {
+       const [col, id] = seg;
+       const snap = await db.collection(col).doc(String(id)).get();
+       return snap.exists ? snap.data() : null;
+      }
+
+      throw new Error(`Unsupported GET path: ${path}`);
+     },
+     async put(path = '', value) {
+      await ensureAuth();
+      const seg = path.split('/').filter(Boolean);
+
+      if (seg.length === 1 && seg[0] === 'config') {
+       await db.collection('config').doc('app').set(value ?? {}, { merge: false });
+       return value;
+      }
+
+      if (seg.length === 1 && ['teachers', 'events', 'trainings', 'activityLog'].includes(seg[0])) {
+       const col = seg[0];
+       const colRef = db.collection(col);
+       const batch = db.batch();
+       const existing = await colRef.get();
+       existing.forEach((docSnap) => batch.delete(docSnap.ref));
+
+       const arr = Array.isArray(value) ? value : [];
+       arr.forEach((row) => {
+        const id =
+         col === 'teachers' ? String(row.teacherId) :
+         col === 'events' ? String(row.eventId) :
+         col === 'trainings' ? String(row.trainingId) :
+         String(row.id ?? Date.now());
+        batch.set(colRef.doc(id), row ?? {}, { merge: false });
+       });
+
+       await batch.commit();
+       return value;
+      }
+
+      if (seg.length === 2) {
+       const [col, id] = seg;
+       await db.collection(col).doc(String(id)).set(value ?? {}, { merge: false });
+       return value;
+      }
+
+      throw new Error(`Unsupported PUT path: ${path}`);
+     },
+     async patch(path = '', value) {
+      await ensureAuth();
+      const seg = path.split('/').filter(Boolean);
+
+      if (seg.length === 2) {
+       const [col, id] = seg;
+       await db.collection(col).doc(String(id)).set(value ?? {}, { merge: true });
+       return value;
+      }
+
+      if (seg.length === 1 && ['teachers', 'events', 'trainings', 'activityLog'].includes(seg[0])) {
+       const col = seg[0];
+       const colRef = db.collection(col);
+       const arr = Array.isArray(value) ? value : [];
+       const batch = db.batch();
+       arr.forEach((row) => {
+        const id =
+         col === 'teachers' ? String(row.teacherId) :
+         col === 'events' ? String(row.eventId) :
+         col === 'trainings' ? String(row.trainingId) :
+         String(row.id ?? Date.now());
+        batch.set(colRef.doc(id), row ?? {}, { merge: true });
+       });
+       await batch.commit();
+       return value;
+      }
+
+      throw new Error('PATCH requires collection/id or mergeable array');
+     }
+    };
+
+    if (!window.firebaseDbApi || typeof window.firebaseDbApi.get !== 'function') {
+     window.firebaseDbApi = compatHelpers;
+    }
+
+    window.firebaseApp = app;
+    window.firebaseDatabase = null;
+
+    if (typeof window.notifyFirebaseReady === 'function') {
+     window.notifyFirebaseReady(app, null, window.firebaseDbApi);
+    }
+
+    ensureAuth().catch((error) => {
+     if (typeof window.notifyFirebaseInitError === 'function') {
+      window.notifyFirebaseInitError(error);
+     }
+    });
    })();
   </script>
   <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+  import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
   import {
     getFirestore,
@@ -4360,7 +4475,7 @@
   const firebaseConfig = Object.assign({}, fallbackConfig, providedConfig);
 
   try {
-    const app = initializeApp(firebaseConfig);
+    const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
