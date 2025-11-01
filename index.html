@@ -2567,9 +2567,7 @@
                     break;
             }
 
-            const parsed = Number(value);
-            return Number.isFinite(parsed) ? parsed : value;
-        }
+            document.getElementById('latest-event').innerHTML = latestEventHtml;
 
             // Render next queue split by duty/training rows
             const dutyQueueTeachers = getNextQueueTeachers(13, QUEUE_TYPES.DUTY);
@@ -3300,6 +3298,25 @@
             }
         }
 
+        function fillTeacherFormFields(data = {}) {
+            document.getElementById('teacher-name').value = data.name || '';
+            document.getElementById('teacher-position').value = data.position || '';
+            const dutyScore = parseInt(data.dutyQueueScore, 10);
+            const trainingScore = parseInt(data.trainingQueueScore, 10);
+            document.getElementById('teacher-duty-queue-score').value = Number.isFinite(dutyScore) ? dutyScore : 0;
+            document.getElementById('teacher-training-queue-score').value = Number.isFinite(trainingScore) ? trainingScore : 0;
+        }
+
+        function resetTeacherForm() {
+            const form = document.getElementById('teacher-form');
+            if (currentTeacherInitialData) {
+                fillTeacherFormFields(currentTeacherInitialData);
+            } else if (form) {
+                form.reset();
+                fillTeacherFormFields({ dutyQueueScore: 0, trainingQueueScore: 0 });
+            }
+        }
+
         function resetTeacherForm() {
             const form = document.getElementById('teacher-form');
             if (currentTeacherInitialData) {
@@ -3423,6 +3440,9 @@
                 alert('ไม่พบข้อมูลอบรมที่เลือก');
                 return;
             }
+            
+            updateSelectedCount(requiredQuota);
+        }
 
         function updateSelectedCount(requiredQuota) {
             const selectedCount = document.querySelectorAll('.teacher-select-card.border-green-500').length;
@@ -4280,42 +4300,129 @@
         var db = firebase.firestore();
         db.settings({
           ignoreUndefinedProperties: true,
-          experimentalAutoDetectLongPolling: true,
+          experimentalForceLongPolling: true,
           useFetchStreams: false
-          // experimentalForceLongPolling: true
         });
 
-        // helpers ให้เข้ากับโค้ดที่ใช้ firebaseFetch(get/put/patch)
+        // ---------- Helpers with timeout + REST fallback ----------
+        async function withTimeout(promise, ms=6000) {
+          return new Promise((resolve, reject) => {
+            const t = setTimeout(() => reject(new Error('timeout')), ms);
+            promise.then(v => { clearTimeout(t); resolve(v); })
+                   .catch(e => { clearTimeout(t); reject(e); });
+          });
+        }
+
+        async function getIdToken() {
+          const user = firebase.auth().currentUser || (await new Promise(res => {
+            const unsub = firebase.auth().onAuthStateChanged(x => { unsub(); res(x); });
+          }));
+          if (!user) return null;
+          try {
+            return await user.getIdToken();
+          } catch (err) {
+            return null;
+          }
+        }
+
+        function decodeFirestoreValue(value){
+          if (!value) return null;
+          if (Object.prototype.hasOwnProperty.call(value, 'stringValue')) return value.stringValue;
+          if (Object.prototype.hasOwnProperty.call(value, 'integerValue')) return Number(value.integerValue);
+          if (Object.prototype.hasOwnProperty.call(value, 'doubleValue')) return Number(value.doubleValue);
+          if (Object.prototype.hasOwnProperty.call(value, 'booleanValue')) return Boolean(value.booleanValue);
+          if (Object.prototype.hasOwnProperty.call(value, 'timestampValue')) return value.timestampValue;
+          if (Object.prototype.hasOwnProperty.call(value, 'arrayValue')) {
+            const arr = value.arrayValue.values || [];
+            return arr.map(decodeFirestoreValue);
+          }
+          if (Object.prototype.hasOwnProperty.call(value, 'mapValue')) {
+            const mapFields = value.mapValue.fields || {};
+            const obj = {};
+            Object.entries(mapFields).forEach(([k, v]) => {
+              obj[k] = decodeFirestoreValue(v);
+            });
+            return obj;
+          }
+          return null;
+        }
+
+        async function restGetCollection(col){
+          const key = (window.firebaseAppConfig && window.firebaseAppConfig.apiKey) || '';
+          const pid = (window.firebaseAppConfig && window.firebaseAppConfig.projectId);
+          const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/${encodeURIComponent(col)}?key=${encodeURIComponent(key)}`;
+          const idToken = await getIdToken();
+          const res = await fetch(url, { headers: idToken ? { 'Authorization': 'Bearer ' + idToken } : {} });
+          if (!res.ok) throw new Error('REST collection GET failed ' + res.status);
+          const json = await res.json();
+          const docs = (json.documents || []).map(d => {
+            const id = d.name.split('/').pop();
+            const fields = d.fields || {};
+            const obj = { id };
+            Object.entries(fields).forEach(([k, v]) => {
+              obj[k] = decodeFirestoreValue(v);
+            });
+            return obj;
+          });
+          return docs;
+        }
+
+        async function restGetDoc(col, id){
+          const key = (window.firebaseAppConfig && window.firebaseAppConfig.apiKey) || '';
+          const pid = (window.firebaseAppConfig && window.firebaseAppConfig.projectId);
+          const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/${encodeURIComponent(col)}/${encodeURIComponent(id)}?key=${encodeURIComponent(key)}`;
+          const idToken = await getIdToken();
+          const res = await fetch(url, { headers: idToken ? { 'Authorization': 'Bearer ' + idToken } : {} });
+          if (res.status === 404) return null;
+          if (!res.ok) throw new Error('REST doc GET failed ' + res.status);
+          const data = await res.json();
+          const docId = data.name.split('/').pop();
+          const fields = data.fields || {};
+          const obj = { id: docId };
+          Object.entries(fields).forEach(([k, v]) => {
+            obj[k] = decodeFirestoreValue(v);
+          });
+          return obj;
+        }
+
         var helpers = {
-          // GET: "collection" -> array, "collection/docId" -> object
           get: async function(path){
-            var clean = String(path||'').replace(/^\/+/, '');
-            var parts = clean.split('/');
-            if (parts.length === 1){
-              var snap = await db.collection(parts[0]).get();
-              return snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-            } else if (parts.length === 2){
-              var col = parts[0], id = parts[1];
-              var s = await db.collection(col).doc(id).get();
-              return s.exists ? Object.assign({id:s.id}, s.data()) : null;
+            const clean = String(path || '').replace(/^\/+/, '');
+            const parts = clean.split('/');
+            try {
+              if (parts.length === 1){
+                const res = await withTimeout(db.collection(parts[0]).get(), 6000);
+                return res.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+              } else if (parts.length === 2){
+                const [col, id] = parts;
+                const snap = await withTimeout(db.collection(col).doc(id).get(), 6000);
+                return snap.exists ? Object.assign({id:snap.id}, snap.data()) : null;
+              }
+              throw new Error('Unsupported GET path: ' + path);
+            } catch (err) {
+              window.__dlog && __dlog('GET fallback REST for', clean, '| reason:', err.message || err);
+              if (parts.length === 1){
+                return await restGetCollection(parts[0]);
+              } else if (parts.length === 2){
+                const [col, id] = parts;
+                return await restGetDoc(col, id);
+              }
+              throw err;
             }
-            throw new Error('Unsupported GET path: '+path);
           },
-          // PUT: ต้องเป็นระดับเอกสาร
           put: async function(path, value){
-            var clean = String(path||'').replace(/^\/+/, '');
-            var parts = clean.split('/');
-            if (parts.length !== 2) throw new Error('PUT requires document path, got: '+path);
-            var col = parts[0], id = parts[1];
+            const clean = String(path || '').replace(/^\/+/, '');
+            const parts = clean.split('/');
+            if (parts.length !== 2) throw new Error('PUT requires document path, got: ' + path);
+            const [col, id] = parts;
             await db.collection(col).doc(id).set(value, {merge:false});
             return { ok:true, id:id };
           },
-          // PATCH: อัปเดตเฉพาะฟิลด์บางส่วนที่ระดับเอกสาร
           patch: async function(path, value){
-            var clean = String(path||'').replace(/^\/+/, '');
-            var parts = clean.split('/');
-            if (parts.length !== 2) throw new Error('PATCH requires document path, got: '+path);
-            var col = parts[0], id = parts[1];
+            const clean = String(path || '').replace(/^\/+/, '');
+            const parts = clean.split('/');
+            if (parts.length !== 2) throw new Error('PATCH requires document path, got: ' + path);
+            const [col, id] = parts;
             await db.collection(col).doc(id).update(value);
             return { ok:true, id:id };
           }
@@ -4382,21 +4489,32 @@
     }
   });
 
-  addBtn('PING FIRESTORE (write/read)', async function(){
+  addBtn('PING (write+read)', async function(){
     try{
       await (window.firebaseReadyPromise || Promise.resolve());
       const id = 'PING_' + Date.now();
-      window.__dlog && __dlog('PING: put trainings/'+id);
-      await window.firebaseDbApi.put('trainings/'+id, {
+      window.__dlog && __dlog('PING: put trainings/' + id);
+      await window.firebaseDbApi.put('trainings/' + id, {
         createdAt: new Date().toISOString(),
         by: 'debug',
         note: 'ping'
       });
-      window.__dlog && __dlog('PING: get trainings/'+id);
-      const doc = await window.firebaseDbApi.get('trainings/'+id);
-      window.__dlog && __dlog('PING: read back =', doc ? 'OK' : 'null', doc && doc.createdAt);
+      window.__dlog && __dlog('PING: get trainings/' + id);
+      const doc = await window.firebaseDbApi.get('trainings/' + id);
+      window.__dlog && __dlog('PING RESULT:', doc ? 'OK' : 'NULL', doc);
     }catch(e){
       window.__dlog && __dlog('PING ERROR:', e && (e.message||e));
+    }
+  });
+
+  addBtn('LOAD TEACHERS', async function(){
+    try{
+      await (window.firebaseReadyPromise || Promise.resolve());
+      window.__dlog && __dlog('LOAD TEACHERS: calling get("teachers")');
+      const list = await window.firebaseDbApi.get('teachers');
+      window.__dlog && __dlog('LOAD TEACHERS RESULT:', Array.isArray(list)? list.length : '(not array)', list && list[0]);
+    }catch(e){
+      window.__dlog && __dlog('LOAD TEACHERS ERROR:', e && (e.message||e));
     }
   });
 })();
