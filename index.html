@@ -908,6 +908,15 @@
     <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
    </div>
   </div>
+  <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[2000] hidden">
+   <div class="text-center">
+    <svg class="animate-spin h-10 w-10 text-[#894D5B] mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    <p class="text-sm font-medium text-gray-700">กำลังเชื่อมต่อกับฐานข้อมูล...</p>
+   </div>
+  </div>
   <script>
         // Firebase initialization bridge (shared with module loader)
         window.firebaseAppConfig = window.firebaseAppConfig || {
@@ -989,25 +998,28 @@
         let dataInitialized = false;
         let firebaseDataLoaded = false;
 
+        // --- FIX: normalizeDateString (รองรับรูปแบบ 2025-11-01 และ 1/11/2568) ---
         function normalizeDateString(input) {
             if (!input) {
                 return null;
             }
+
             if (input instanceof Date && !Number.isNaN(input)) {
                 return input.toISOString().slice(0, 10);
             }
 
             const str = String(input).trim();
+
             const direct = new Date(str);
             if (!Number.isNaN(direct.getTime())) {
                 return direct.toISOString().slice(0, 10);
             }
-            ensureTeacherStats(teacher);
-            const value = queueType === QUEUE_TYPES.TRAINING
-                ? teacher.trainingQueueScore
-                : teacher.dutyQueueScore;
-            return Number.isFinite(value) ? value : 0;
-        }
+            t.dutyQueueScore = normalizedDutyScore;
+            t.trainingQueueScore = normalizedTrainingScore;
+            t.queueScore = t.dutyQueueScore;
+            t.lastEventDate = t.lastEventDate ? normalizeDateString(t.lastEventDate) : null;
+            t.lastDutyDate = t.lastDutyDate ? normalizeDateString(t.lastDutyDate) : null;
+            t.lastTrainingDate = t.lastTrainingDate ? normalizeDateString(t.lastTrainingDate) : null;
 
             const match = str.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
             if (match) {
@@ -1017,9 +1029,9 @@
                 if (year > 2400) {
                     year -= 543;
                 }
-                const normalized = new Date(year, month, day);
-                if (!Number.isNaN(normalized.getTime())) {
-                    return normalized.toISOString().slice(0, 10);
+                const parsed = new Date(year, month, day);
+                if (!Number.isNaN(parsed.getTime())) {
+                    return parsed.toISOString().slice(0, 10);
                 }
             }
 
@@ -2329,53 +2341,6 @@
             `;
         }
 
-        function recomputeTeacherStats() {
-            const teacherMap = new Map();
-
-            teachers.forEach(teacher => {
-                ensureTeacherStats(teacher);
-                teacher.dutyDuties = 0;
-                teacher.trainingDuties = 0;
-                teacher.dutySwapCount = 0;
-                teacher.trainingSwapCount = 0;
-                teacher.totalDuties = 0;
-                teacher.swapCount = 0;
-                teacher.lastDutyDate = null;
-                teacher.lastTrainingDate = null;
-                teacherMap.set(teacher.teacherId, teacher);
-            });
-
-            const updateFromEvent = (event, queueType) => {
-                const slots = getEventAssignmentSlots(event);
-                slots.forEach(slot => {
-                    if (!slot || slot.currentTeacherId === null || slot.currentTeacherId === undefined) {
-                        return;
-                    }
-                    const teacher = teacherMap.get(slot.currentTeacherId);
-                    if (!teacher) {
-                        return;
-                    }
-
-                    const dateValue = normalizeDateString(event.date);
-                    if (queueType === QUEUE_TYPES.TRAINING) {
-                        teacher.trainingDuties = (teacher.trainingDuties || 0) + 1;
-                        teacher.lastTrainingDate = latestDateString(teacher.lastTrainingDate, dateValue);
-                        if (slot.originalTeacherId && slot.originalTeacherId !== slot.currentTeacherId) {
-                            teacher.trainingSwapCount = (teacher.trainingSwapCount || 0) + 1;
-                        }
-                    } else {
-                        teacher.dutyDuties = (teacher.dutyDuties || 0) + 1;
-                        teacher.lastDutyDate = latestDateString(teacher.lastDutyDate, dateValue);
-                        if (slot.originalTeacherId && slot.originalTeacherId !== slot.currentTeacherId) {
-                            teacher.dutySwapCount = (teacher.dutySwapCount || 0) + 1;
-                        }
-                    }
-                });
-            };
-
-            events.forEach(event => updateFromEvent(event, QUEUE_TYPES.DUTY));
-            trainings.forEach(event => updateFromEvent(event, QUEUE_TYPES.TRAINING));
-
             teachers.forEach(teacher => {
                 teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
                 teacher.swapCount = (teacher.dutySwapCount || 0) + (teacher.trainingSwapCount || 0);
@@ -2426,29 +2391,17 @@
                 return event;
             }
 
-            if (!Array.isArray(event.assignmentSlots) || event.assignmentSlots.length === 0) {
-                event.assignmentSlots = createAssignmentSlotsFromIds(event.assignedTeachers);
-            } else {
-                event.assignmentSlots = event.assignmentSlots.map(slot => {
-                    const originalId = normalizeTeacherId(slot.originalTeacherId ?? slot.teacherId ?? slot.currentTeacherId ?? null);
-                    const currentId = normalizeTeacherId(slot.currentTeacherId ?? slot.substituteTeacherId ?? originalId);
-                    const substituted = originalId && currentId && originalId !== currentId;
-                    const slotType = slot.substitutionType || (substituted ? SUBSTITUTION_TYPES.REPLACEMENT : SUBSTITUTION_TYPES.NONE);
-                    return {
-                        originalTeacherId: originalId,
-                        currentTeacherId: currentId,
-                        substituteTeacherId: substituted ? currentId : null,
-                        substitutionType: substituted ? slotType : SUBSTITUTION_TYPES.NONE
-                    };
-                });
-            }
+            // Render next queue split by duty/training rows
+            const dutyQueueTeachers = getNextQueueTeachers(13, QUEUE_TYPES.DUTY);
+            const trainingQueueTeachers = getNextQueueTeachers(13, QUEUE_TYPES.TRAINING);
+            const divider = '<div class="border-t border-dashed border-rose-200 my-4"></div>';
 
-            event.assignedTeachers = event.assignmentSlots
-                .map(slot => slot.currentTeacherId)
-                .filter(id => id !== null && id !== undefined);
-
-            return event;
-        }
+            document.getElementById('next-queue').innerHTML = [
+                buildNextQueueSection(QUEUE_TYPES.DUTY, dutyQueueTeachers),
+                buildNextQueueSection(QUEUE_TYPES.TRAINING, trainingQueueTeachers)
+            ].join(divider);
+            highlightNextQueueSelection();
+            renderNextQueueInsightFromSelection();
 
             // Render next queue split by duty/training rows
             const dutyQueueTeachers = getNextQueueTeachers(13, QUEUE_TYPES.DUTY);
@@ -2699,171 +2652,15 @@
                                         const teacher = getTeacherById(id);
                                         const trainingScore = teacher ? getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING) : '-';
                                         return `
-                                            <div class="flex items-center bg-gray-50 p-2 rounded-lg">
-                                                ${createTeacherAvatar(teacher)}
+                                            <div class="flex items-center bg-gray-50 p-2 rounded-lg border ${isSubstituted ? 'border-[#E1B1C1]' : 'border-transparent'}">
+                                                ${createTeacherAvatar(currentTeacher)}
                                                 <div class="ml-2">
                                                     <p class="font-medium text-gray-800 text-sm">${teacher?.name || 'ไม่พบข้อมูล'}</p>
                                                     <div class="queue-score text-xs">คะแนนอบรม ${trainingScore}</div>
                                                 </div>
-                                                <div class="selection-indicator mt-2 w-4 h-4 rounded-full border-2 ${isSelected ? 'bg-green-500 border-green-500' : 'border-gray-300'}">
-                                                    ${isSelected ? '<span class="text-white text-xs">✓</span>' : ''}
-                                                </div>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                    <div class="mt-3 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
-                        <p><span class="font-medium">💡 คำแนะนำ:</span> ครูที่มี ⭐ คือครูที่ระบบแนะนำตาม${scoreDescriptor}ต่ำสุด</p>
-                        <p class="mt-1"><span class="font-medium">เลือกแล้ว:</span> <span id="selected-count">0</span>/${event.requiredQuota} คน</p>
-                    </div>
-                </div>
-            `;
-
-            // Initialize selection count
-            updateSelectedCount(event.requiredQuota);
-
-            document.getElementById('confirm-auto-assign').onclick = () => confirmAutoAssignFromSelection(eventId, currentEventQueueType);
-            document.getElementById('auto-assign-modal').classList.add('show');
-        }
-
-        function toggleTeacherSelection(teacherId, requiredQuota) {
-            const card = document.querySelector(`[data-teacher-id="${teacherId}"]`);
-            const indicator = card.querySelector('.selection-indicator');
-            const isCurrentlySelected = card.classList.contains('border-green-500');
-            
-            if (isCurrentlySelected) {
-                // Deselect
-                card.classList.remove('border-green-500', 'bg-green-50');
-                card.classList.add('border-gray-200', 'bg-white');
-                indicator.classList.remove('bg-green-500', 'border-green-500');
-                indicator.classList.add('border-gray-300');
-                indicator.innerHTML = '';
-            } else {
-                // Check if we can select more
-                const currentSelected = document.querySelectorAll('.teacher-select-card.border-green-500').length;
-                if (currentSelected >= requiredQuota) {
-                    alert(`สามารถเลือกได้สูงสุด ${requiredQuota} คนเท่านั้น`);
-                    return;
-                }
-                
-                // Select
-                card.classList.remove('border-gray-200', 'bg-white');
-                card.classList.add('border-green-500', 'bg-green-50');
-                indicator.classList.remove('border-gray-300');
-                indicator.classList.add('bg-green-500', 'border-green-500');
-                indicator.innerHTML = '<span class="text-white text-xs">✓</span>';
-            }
-            
-            updateSelectedCount(requiredQuota);
-        }
-
-        function updateSelectedCount(requiredQuota) {
-            const selectedCount = document.querySelectorAll('.teacher-select-card.border-green-500').length;
-            const countElement = document.getElementById('selected-count');
-            if (countElement) {
-                countElement.textContent = selectedCount;
-                countElement.style.color = selectedCount === requiredQuota ? '#059669' : '#dc2626';
-            }
-        }
-
-        function confirmAutoAssignFromSelection(eventId, queueType = currentEventQueueType) {
-            const selectedCards = document.querySelectorAll('.teacher-select-card.border-green-500');
-            const selectedTeacherIds = Array.from(selectedCards).map(card =>
-                parseInt(card.getAttribute('data-teacher-id'))
-            );
-
-            const event = getEventById(eventId, queueType);
-
-            if (selectedTeacherIds.length !== event.requiredQuota) {
-                alert(`กรุณาเลือกครูให้ครบ ${event.requiredQuota} คน (เลือกแล้ว ${selectedTeacherIds.length} คน)`);
-                return;
-            }
-
-            const selectedTeachers = selectedTeacherIds.map(id => getTeacherById(id));
-            confirmAutoAssign(eventId, selectedTeachers, queueType);
-        }
-
-        function closeAutoAssignModal() {
-            document.getElementById('auto-assign-modal').classList.remove('show');
-        }
-
-        function confirmAutoAssign(eventId, selectedTeachers, queueType = currentEventQueueType) {
-            const event = getEventById(eventId, queueType);
-            const teacherIds = selectedTeachers.map(t => t.teacherId);
-
-            // Update event
-            event.assignedTeachers = teacherIds;
-            event.assignmentSlots = createAssignmentSlotsFromIds(teacherIds);
-            event.status = 'assigned';
-            ensureEventAssignments(event);
-
-            // Update teacher stats - ระบบใหม่: เพิ่มคะแนนตามประเภทคิว
-            selectedTeachers.forEach(teacher => {
-                ensureTeacherStats(teacher);
-                if (queueType === QUEUE_TYPES.TRAINING) {
-                    teacher.trainingDuties = (teacher.trainingDuties || 0) + 1;
-                    teacher.lastTrainingDate = normalizeDateString(event.date);
-                } else {
-                    teacher.dutyDuties = (teacher.dutyDuties || 0) + 1;
-                    teacher.lastDutyDate = normalizeDateString(event.date);
-                }
-                teacher.totalDuties = (teacher.dutyDuties || 0) + (teacher.trainingDuties || 0);
-                adjustTeacherQueueScore(teacher, queueType, 15);
-                teacher.lastEventDate = latestDateString(teacher.lastDutyDate, teacher.lastTrainingDate);
-            });
-
-            // Add activity log
-            const teacherNames = selectedTeachers.map(t => t.name).join(', ');
-            addActivityLog(
-                'auto-assign',
-                `จัดคิวอัตโนมัติสำหรับ${getQueueDisplayName(queueType)} "${getQueueItemName(event, queueType)}"`,
-                `ครูที่ได้รับมอบหมาย: ${teacherNames}`
-            );
-
-            saveData();
-            closeAutoAssignModal();
-            showView(getQueueView(queueType));
-        }
-
-        function openTrainingAutoAssignModal(trainingId) {
-            currentEventQueueType = QUEUE_TYPES.TRAINING;
-            currentEventId = trainingId;
-            const tr = trainings.find(t => t.trainingId === trainingId);
-            if (!tr || tr.status !== 'pending') return;
-
-            const sortedTeachers = [...teachers].sort((a, b) => compareTeachersForQueue(a, b, QUEUE_TYPES.TRAINING));
-            const content = document.getElementById('auto-assign-content');
-
-            content.innerHTML = `
-                <div class="mb-4">
-                    <h4 class="font-semibold text-gray-800 mb-2">อบรม: ${tr.trainingName}</h4>
-                    <p class="text-sm text-gray-600">วันที่: ${formatDateRangeThai(tr.startDate || tr.date, tr.endDate || tr.date)} เวลา: ${tr.time}</p>
-                    <p class="text-sm text-gray-600">ต้องการครู: ${tr.requiredQuota} คน</p>
-                </div>
-                <div class="mb-6">
-                    <h5 class="font-medium text-gray-800 mb-3">เลือกครูที่จะเข้ารับการอบรม (คลิกเพื่อเลือก/ยกเลิก):</h5>
-                    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-80 overflow-y-auto">
-                        ${sortedTeachers.map((teacher, index) => {
-                            const isSelected = index < tr.requiredQuota;
-                            return `
-                                <div class="teacher-select-card p-3 border-2 rounded-lg cursor-pointer ${isSelected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}"
-                                     data-teacher-id="${teacher.teacherId}"
-                                     onclick="toggleTeacherSelection(${teacher.teacherId}, ${tr.requiredQuota})">
-                                    <div class="flex flex-col items-center text-center">
-                                        ${createTeacherAvatar(teacher)}
-                                        <div class="mt-2">
-                                            <p class="font-medium text-sm">${teacher.name}</p>
-                                            <p class="text-xs text-gray-600">${teacher.position}</p>
-                                            <div class="flex items-center justify-center mt-1">
-                                                <span class="queue-score text-xs">${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</span>
-                                                ${index < tr.requiredQuota ? '<span class="ml-1 text-xs">⭐</span>' : ''}
                                             </div>
-                                        </div>
-                                        <div class="selection-indicator mt-2 w-4 h-4 rounded-full border-2 ${isSelected ? 'bg-green-500 border-green-500' : 'border-gray-300'}">
-                                            ${isSelected ? '<span class="text-white text-xs">✓</span>' : ''}
-                                        </div>
-                                    </div>
+                                        `;
+                                    }).join('')}
                                 </div>
                             </div>
                         ` : `
@@ -2886,6 +2683,70 @@
                     </div>
                 </div>
             `;
+
+            container.innerHTML = html || '<p class="text-gray-500 text-center py-8">ยังไม่มีข้อมูลการอบรม</p>';
+        }
+
+        // Teachers table rendering
+        function renderTeachersTable() {
+            const tbody = document.getElementById('teachers-table-body');
+            if (!tbody) {
+                return;
+            }
+
+            const sortedTeachers = [...teachers]
+                .map(teacher => {
+                    ensureTeacherStats(teacher);
+                    return teacher;
+                })
+                .sort((a, b) => {
+                    const dutyDiff = getTeacherQueueScore(a, QUEUE_TYPES.DUTY) - getTeacherQueueScore(b, QUEUE_TYPES.DUTY);
+                    if (dutyDiff !== 0) {
+                        return dutyDiff;
+                    }
+                    const trainingDiff = getTeacherQueueScore(a, QUEUE_TYPES.TRAINING) - getTeacherQueueScore(b, QUEUE_TYPES.TRAINING);
+                    if (trainingDiff !== 0) {
+                        return trainingDiff;
+                    }
+                    const dateA = a.lastEventDate ? new Date(a.lastEventDate) : new Date(0);
+                    const dateB = b.lastEventDate ? new Date(b.lastEventDate) : new Date(0);
+                    return dateA - dateB;
+                })
+                .map((teacher, index) => ({ ...teacher, queueRank: index + 1 }));
+
+            if (sortedTeachers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-gray-500">ยังไม่มีข้อมูลครู</td></tr>';
+                renderTeacherDetail(null);
+                return;
+            }
+
+            if (!selectedTeacherId || !sortedTeachers.some(t => t.teacherId === selectedTeacherId)) {
+                selectedTeacherId = sortedTeachers[0].teacherId;
+            }
+
+            tbody.innerHTML = sortedTeachers.map(teacher => {
+                const isActive = teacher.teacherId === selectedTeacherId;
+                return `
+                    <tr class="${isActive ? 'is-active' : ''}" onclick="showTeacherDetail(${teacher.teacherId})">
+                        <td class="font-medium text-gray-700">${teacher.queueRank}</td>
+                        <td>
+                            <div class="flex items-center space-x-3">
+                                ${createTeacherAvatar(teacher)}
+                                <div>
+                                    <p class="font-semibold text-gray-800">${teacher.name}</p>
+                                    ${teacher.lastEventDate ? `<p class="text-xs text-gray-500">ล่าสุด ${formatDateThai(teacher.lastEventDate)}</p>` : ''}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-sm text-gray-600">${teacher.position}</td>
+                        <td class="font-semibold text-[#5b2d38]">${getTeacherQueueScore(teacher, QUEUE_TYPES.DUTY)}</td>
+                        <td class="font-semibold text-[#245f7a]">${getTeacherQueueScore(teacher, QUEUE_TYPES.TRAINING)}</td>
+                        <td class="text-center">${teacher.dutyDuties ?? 0}</td>
+                        <td class="text-center">${teacher.trainingDuties ?? 0}</td>
+                        <td class="text-center">${teacher.swapCount ?? 0}</td>
+                    </tr>
+                `;
+            }).join('');
 
             container.innerHTML = html || '<p class="text-gray-500 text-center py-8">ยังไม่มีข้อมูลการอบรม</p>';
         }
@@ -3339,6 +3200,16 @@
             }
         }
 
+        function resetTeacherForm() {
+            const form = document.getElementById('teacher-form');
+            if (currentTeacherInitialData) {
+                fillTeacherFormFields(currentTeacherInitialData);
+            } else if (form) {
+                form.reset();
+                fillTeacherFormFields({ dutyQueueScore: 0, trainingQueueScore: 0 });
+            }
+        }
+
             const event = getEventById(eventId, queueType);
 
             if (teacherId) {
@@ -3453,10 +3324,14 @@
                 return;
             }
 
-            if (selectedIds.length !== tr.requiredQuota) {
-                alert(`กรุณาเลือกครูให้ครบ ${tr.requiredQuota} คน (เลือกแล้ว ${selectedIds.length} คน)`);
-                return;
+        function updateSelectedCount(requiredQuota) {
+            const selectedCount = document.querySelectorAll('.teacher-select-card.border-green-500').length;
+            const countElement = document.getElementById('selected-count');
+            if (countElement) {
+                countElement.textContent = selectedCount;
+                countElement.style.color = selectedCount === requiredQuota ? '#059669' : '#dc2626';
             }
+        }
 
         function confirmAutoAssignFromSelection(eventId, queueType = currentEventQueueType) {
             const selectedCards = document.querySelectorAll('.teacher-select-card.border-green-500');
@@ -3475,17 +3350,9 @@
             confirmAutoAssign(eventId, selectedTeachers, queueType);
         }
 
-        function confirmTrainingAutoAssign(trainingId, selectedTeachers) {
-            const tr = trainings.find(t => t.trainingId === trainingId);
-            if (!tr) {
-                alert('ไม่พบข้อมูลอบรมที่เลือก');
-                return;
-            }
-
-            tr.assignedTeachers = selectedTeachers.map(t => t.teacherId);
-            tr.status = 'assigned';
-            tr.assignmentSlots = createAssignmentSlotsFromIds(tr.assignedTeachers);
-            ensureEventAssignments(tr);
+        function closeAutoAssignModal() {
+            document.getElementById('auto-assign-modal').classList.remove('show');
+        }
 
         function confirmAutoAssign(eventId, selectedTeachers, queueType = currentEventQueueType) {
             const event = getEventById(eventId, queueType);
@@ -4231,21 +4098,10 @@
             }
         }
 
-        window.initMap = function() {
-            mapsApiReady = true;
-            initializeLocationMap();
-
-            if (pendingLocationEvent) {
-                prepareLocationPicker(pendingLocationEvent);
-                pendingLocationEvent = null;
-            }
-        };
-
-        // Initialize application
-        document.addEventListener('DOMContentLoaded', async function() {
-            await initializeElementSdk();
-            await loadInitialData();
-        });
+        window.loadInitialData = loadInitialData;
+        if (typeof initializeElementSdk === 'function') {
+            window.initializeElementSdk = initializeElementSdk;
+        }
     </script>
   <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
@@ -4446,38 +4302,32 @@
    })();
   </script>
   <script type="module">
-  import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+  // --- Firebase v10 Loader + Firestore Bridge ---
+  import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
   import {
     getFirestore,
+    collection,
     doc,
+    getDocs,
     getDoc,
     setDoc,
     updateDoc,
-    collection,
-    getDocs,
+    writeBatch,
     query,
-    orderBy,
-    writeBatch
-  } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+    orderBy
+  } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+  import {
+    getAuth,
+    onAuthStateChanged,
+    signInAnonymously
+  } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
-  const fallbackConfig = {
-    apiKey: 'AIzaSyDv--hw2BWKE-NTFrCMpTNz9LEzGK8l5PE',
-    authDomain: 'thaigogo-e9112.firebaseapp.com',
-    projectId: 'thaigogo-e9112',
-    storageBucket: 'thaigogo-e9112.firebasestorage.app',
-    messagingSenderId: '820257616141',
-    appId: '1:820257616141:web:c92cf50ae5e05491fb4044',
-    measurementId: 'G-4FX435MNDC'
-  };
-
-  const providedConfig = window.firebaseAppConfig || {};
-  const firebaseConfig = Object.assign({}, fallbackConfig, providedConfig);
+  const cfg = window.firebaseAppConfig;
 
   try {
-    const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-    const auth = getAuth(app);
+    const app = getApps().length ? getApp() : initializeApp(cfg);
     const db = getFirestore(app);
+    const auth = getAuth(app);
 
     const authReady = new Promise((resolve, reject) => {
       onAuthStateChanged(
@@ -4486,140 +4336,142 @@
           if (user) {
             resolve(user);
           } else {
-            signInAnonymously(auth).catch((authError) => {
-              console.error('Anonymous sign-in failed:', authError);
-              reject(authError);
+            signInAnonymously(auth).catch((error) => {
+              console.error('Anonymous sign-in failed:', error);
+              reject(error);
             });
           }
         },
-        (error) => {
-          console.error('Auth observer error:', error);
-          reject(error);
-        }
+        reject
       );
     });
 
     const helpers = {
       async get(path = "") {
         await authReady;
-        const seg = path.split("/").filter(Boolean);
-
-        if (seg.length === 1) {
-          const key = seg[0];
+        const parts = path.replace(/^\/+/, "").split("/").filter(Boolean);
+        if (parts.length === 1) {
+          const key = parts[0];
           if (key === "config") {
             const snap = await getDoc(doc(db, "config", "app"));
             return snap.exists() ? snap.data() : null;
           }
-          if (key === "teachers") {
-            const snap = await getDocs(query(collection(db, "teachers"), orderBy("teacherId", "asc")));
-            return snap.docs.map((d) => d.data());
-          }
-          if (key === "events") {
-            const snap = await getDocs(query(collection(db, "events"), orderBy("eventId", "asc")));
-            return snap.docs.map((d) => d.data());
-          }
-          if (key === "trainings") {
-            const snap = await getDocs(query(collection(db, "trainings"), orderBy("trainingId", "asc")));
-            return snap.docs.map((d) => d.data());
-          }
-          if (key === "activityLog") {
-            const snap = await getDocs(query(collection(db, "activityLog"), orderBy("timestamp", "desc")));
+          if (["teachers", "events", "trainings", "activityLog"].includes(key)) {
+            const base = collection(db, key);
+            const q = key === "activityLog"
+              ? query(base, orderBy("timestamp", "desc"))
+              : key === "teachers"
+                ? query(base, orderBy("teacherId", "asc"))
+                : key === "events"
+                  ? query(base, orderBy("eventId", "asc"))
+                  : key === "trainings"
+                    ? query(base, orderBy("trainingId", "asc"))
+                    : base;
+            const snap = await getDocs(q);
             return snap.docs.map((d) => d.data());
           }
         }
-
-        if (seg.length === 2) {
-          const [col, id] = seg;
-          const snap = await getDoc(doc(db, col, String(id)));
+        if (parts.length === 2) {
+          const [col, id] = parts;
+          const snap = await getDoc(doc(db, col, id));
           return snap.exists() ? snap.data() : null;
         }
-
         throw new Error(`Unsupported GET path: ${path}`);
       },
-
-      async put(path = "", value) {
+      async put(path = "", payload) {
         await authReady;
-        const seg = path.split("/").filter(Boolean);
-
-        if (seg.length === 1 && seg[0] === "config") {
-          await setDoc(doc(db, "config", "app"), value ?? {}, { merge: false });
-          return value;
+        const parts = path.replace(/^\/+/, "").split("/").filter(Boolean);
+        if (parts.length === 1 && parts[0] === "config") {
+          await setDoc(doc(db, "config", "app"), payload ?? {}, { merge: false });
+          return payload;
         }
-
-        if (seg.length === 1 && ["teachers", "events", "trainings", "activityLog"].includes(seg[0])) {
-          const col = seg[0];
+        if (parts.length === 1 && ["teachers", "events", "trainings", "activityLog"].includes(parts[0])) {
+          const col = parts[0];
           const batch = writeBatch(db);
-
           const existing = await getDocs(collection(db, col));
           existing.forEach((docSnap) => batch.delete(docSnap.ref));
-
-          const arr = Array.isArray(value) ? value : [];
-          for (const row of arr) {
+          const arr = Array.isArray(payload) ? payload : [];
+          arr.forEach((row) => {
             const id =
               col === "teachers" ? String(row.teacherId) :
               col === "events" ? String(row.eventId) :
               col === "trainings" ? String(row.trainingId) :
               String(row.id ?? Date.now());
             batch.set(doc(db, col, id), row ?? {}, { merge: false });
-          }
-
+          });
           await batch.commit();
-          return value;
+          return payload;
         }
-
-        if (seg.length === 2) {
-          const [col, id] = seg;
-          await setDoc(doc(db, col, String(id)), value ?? {}, { merge: false });
-          return value;
+        if (parts.length === 2) {
+          const [col, id] = parts;
+          await setDoc(doc(db, col, id), payload ?? {}, { merge: false });
+          return payload;
         }
-
-        throw new Error(`Unsupported PUT path: ${path}`);
+        throw new Error(`PUT requires collection or document path (got: ${path})`);
       },
-
-      async patch(path = "", value) {
+      async patch(path = "", payload) {
         await authReady;
-        const seg = path.split("/").filter(Boolean);
-
-        if (seg.length === 2) {
-          const [col, id] = seg;
-          await updateDoc(doc(db, col, String(id)), value ?? {});
-          return value;
+        const parts = path.replace(/^\/+/, "").split("/").filter(Boolean);
+        if (parts.length === 2) {
+          const [col, id] = parts;
+          await updateDoc(doc(db, col, id), payload ?? {});
+          return payload;
         }
-
-        if (seg.length === 1 && ["teachers", "events", "trainings", "activityLog"].includes(seg[0])) {
-          const col = seg[0];
-          const arr = Array.isArray(value) ? value : [];
+        if (parts.length === 1 && ["teachers", "events", "trainings", "activityLog"].includes(parts[0])) {
+          const col = parts[0];
+          const arr = Array.isArray(payload) ? payload : [];
           const batch = writeBatch(db);
-          for (const row of arr) {
+          arr.forEach((row) => {
             const id =
               col === "teachers" ? String(row.teacherId) :
               col === "events" ? String(row.eventId) :
               col === "trainings" ? String(row.trainingId) :
               String(row.id ?? Date.now());
             batch.set(doc(db, col, id), row ?? {}, { merge: true });
-          }
+          });
           await batch.commit();
-          return value;
+          return payload;
         }
-
-        throw new Error("PATCH requires collection/id or mergeable array");
+        throw new Error(`PATCH requires collection/id or mergeable array (got: ${path})`);
       }
     };
 
-    window.firebaseApp = app;
-    window.firebaseDatabase = null;
     window.firebaseDbApi = helpers;
-
     if (typeof window.notifyFirebaseReady === "function") {
-      window.notifyFirebaseReady(app, null, helpers);
+      window.notifyFirebaseReady(app, db, helpers);
     }
   } catch (error) {
     if (typeof window.notifyFirebaseInitError === "function") {
       window.notifyFirebaseInitError(error);
     } else {
-      console.error("Firebase initialization error:", error);
+      console.error('Firebase initialization error:', error);
     }
   }
+  </script>
+  <script>
+  // Ensure: เริ่มหลัง Firestore พร้อม
+  document.addEventListener('DOMContentLoaded', async () => {
+    try {
+      await (window.firebaseReadyPromise || Promise.resolve());
+      if (typeof window.initializeElementSdk === 'function') {
+        await window.initializeElementSdk();
+      }
+      if (typeof window.loadInitialData === 'function') {
+        await window.loadInitialData();
+      } else if (typeof window.renderAllViews === 'function') {
+        await window.renderAllViews();
+      }
+      const overlay = document.getElementById('loading-overlay');
+      if (overlay) {
+        overlay.classList.add('hidden');
+      }
+    } catch (err) {
+      console.error('App bootstrap failed:', err);
+      if (typeof window.showFirebaseStatus === 'function') {
+        window.showFirebaseStatus('error', 'ไม่สามารถโหลดข้อมูลได้: ' + (err?.message || err), true);
+      }
+    }
+  });
   </script>
  </body>
 </html>
