@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+
+    // อนุญาตเฉพาะ 5 คอลเลกชันนี้ และต้องเป็นผู้ใช้ที่ sign-in แล้ว (รวม Anonymous)
+    match /{collection}/{docId} where
+      collection in ['config','teachers','events','activityLog','trainings'] {
+      allow read, write: if signedIn();
+    }
+  }
+}
