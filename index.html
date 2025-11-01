@@ -1065,6 +1065,8 @@
                     return parsed.toISOString().slice(0, 10);
                 }
             }
+            return collection.find(e => e.eventId === id) || null;
+        }
 
             return null;
         }
@@ -2569,20 +2571,6 @@
             return Number.isFinite(parsed) ? parsed : value;
         }
 
-        function createAssignmentSlotsFromIds(ids = []) {
-            return (Array.isArray(ids) ? ids : [])
-                .filter(id => id !== null && id !== undefined)
-                .map(id => {
-                    const normalizedId = normalizeTeacherId(id);
-                    return {
-                        originalTeacherId: normalizedId,
-                        currentTeacherId: normalizedId,
-                        substituteTeacherId: null,
-                        substitutionType: SUBSTITUTION_TYPES.NONE
-                    };
-                });
-        }
-
             // Render next queue split by duty/training rows
             const dutyQueueTeachers = getNextQueueTeachers(13, QUEUE_TYPES.DUTY);
             const trainingQueueTeachers = getNextQueueTeachers(13, QUEUE_TYPES.TRAINING);
@@ -3291,25 +3279,6 @@
 
         function editTraining(id) {
             openTrainingModal(id);
-        }
-
-        function fillTeacherFormFields(data = {}) {
-            document.getElementById('teacher-name').value = data.name || '';
-            document.getElementById('teacher-position').value = data.position || '';
-            const dutyScore = parseInt(data.dutyQueueScore, 10);
-            const trainingScore = parseInt(data.trainingQueueScore, 10);
-            document.getElementById('teacher-duty-queue-score').value = Number.isFinite(dutyScore) ? dutyScore : 0;
-            document.getElementById('teacher-training-queue-score').value = Number.isFinite(trainingScore) ? trainingScore : 0;
-        }
-
-        function resetTeacherForm() {
-            const form = document.getElementById('teacher-form');
-            if (currentTeacherInitialData) {
-                fillTeacherFormFields(currentTeacherInitialData);
-            } else if (form) {
-                form.reset();
-                fillTeacherFormFields({ dutyQueueScore: 0, trainingQueueScore: 0 });
-            }
         }
 
         function fillTeacherFormFields(data = {}) {
@@ -4309,6 +4278,12 @@
         });
 
         var db = firebase.firestore();
+        db.settings({
+          ignoreUndefinedProperties: true,
+          experimentalAutoDetectLongPolling: true,
+          useFetchStreams: false
+          // experimentalForceLongPolling: true
+        });
 
         // helpers ให้เข้ากับโค้ดที่ใช้ firebaseFetch(get/put/patch)
         var helpers = {
@@ -4404,6 +4379,24 @@
       if (typeof window.renderAllViews === 'function') window.renderAllViews();
     }catch(e){
       window.__dlog && __dlog('TEST ERROR:', e && (e.message||e));
+    }
+  });
+
+  addBtn('PING FIRESTORE (write/read)', async function(){
+    try{
+      await (window.firebaseReadyPromise || Promise.resolve());
+      const id = 'PING_' + Date.now();
+      window.__dlog && __dlog('PING: put trainings/'+id);
+      await window.firebaseDbApi.put('trainings/'+id, {
+        createdAt: new Date().toISOString(),
+        by: 'debug',
+        note: 'ping'
+      });
+      window.__dlog && __dlog('PING: get trainings/'+id);
+      const doc = await window.firebaseDbApi.get('trainings/'+id);
+      window.__dlog && __dlog('PING: read back =', doc ? 'OK' : 'null', doc && doc.createdAt);
+    }catch(e){
+      window.__dlog && __dlog('PING ERROR:', e && (e.message||e));
     }
   });
 })();
