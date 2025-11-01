@@ -343,6 +343,42 @@
             box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
         }
 
+        .queue-card-actions {
+            display: flex;
+            gap: 0.4rem;
+            width: 100%;
+            margin-top: 0.35rem;
+        }
+
+        .queue-card-action-button {
+            flex: 1 1 0;
+            font-size: 11px;
+            padding: 4px 6px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .queue-card-action-button.edit {
+            background: var(--secondary-bg);
+            color: #ffffff;
+        }
+
+        .queue-card-action-button.edit:hover {
+            background: #6f3b48;
+        }
+
+        .queue-card-action-button.adjust {
+            background: rgba(137, 77, 91, 0.12);
+            color: #5b2d38;
+            border: 1px solid rgba(137, 77, 91, 0.25);
+        }
+
+        .queue-card-action-button.adjust:hover {
+            background: rgba(137, 77, 91, 0.2);
+        }
+
         .next-queue-card.is-active {
             border-color: rgba(137, 77, 91, 0.55);
             box-shadow: 0 8px 18px rgba(137, 77, 91, 0.15);
@@ -430,6 +466,56 @@
             color: #374151;
         }
 
+        .toast-container {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            z-index: 2500;
+            pointer-events: none;
+        }
+
+        .toast {
+            min-width: 220px;
+            max-width: 320px;
+            padding: 0.85rem 1rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+            background: rgba(137, 77, 91, 0.95);
+            color: #ffffff;
+            font-size: 0.9rem;
+            font-weight: 500;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            pointer-events: auto;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.success {
+            background: linear-gradient(135deg, rgba(136, 168, 42, 0.95), rgba(33, 81, 10, 0.92));
+        }
+
+        .toast.info {
+            background: linear-gradient(135deg, rgba(196, 233, 248, 0.95), rgba(85, 166, 199, 0.95));
+            color: #1f3f4c;
+        }
+
+        .toast.warning {
+            background: linear-gradient(135deg, rgba(255, 221, 140, 0.95), rgba(233, 180, 72, 0.95));
+            color: #4b3300;
+        }
+
+        .toast.error {
+            background: linear-gradient(135deg, rgba(240, 128, 128, 0.95), rgba(172, 58, 76, 0.95));
+        }
+
     </style>
   <style>@view-transition { navigation: auto; }</style>
  </head>
@@ -450,7 +536,8 @@
     });
     setTimeout(hide, 8000);
    })();
-  </script>
+ </script>
+  <div id="toast-container" class="toast-container"></div>
   <div class="flex flex-col h-screen"><!-- Top Navigation -->
    <div class="shadow-lg" style="background: var(--primary-bg); color: #4a2c35;">
     <div class="px-6 py-4">
@@ -716,8 +803,40 @@
       </div>
       <div class="form-group"><label class="form-label">คะแนนคิวอบรมเริ่มต้น</label> <input type="number" id="teacher-training-queue-score" class="form-input" value="0" min="0" required>
       </div>
+    </div>
+    <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="resetTeacherForm()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> รีเซ็ต </button><button type="button" onclick="closeTeacherModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
+    </div>
+   </form>
+  </div>
+  </div><!-- Teacher Modal -->
+  <div id="adjust-score-modal" class="modal">
+   <div class="modal-content w-full max-w-md">
+    <div class="flex justify-between items-center mb-6">
+     <div>
+      <h3 class="text-xl font-bold text-gray-800" id="adjust-score-modal-title">ปรับคะแนนคิว</h3>
+      <p class="text-sm text-gray-500" id="adjust-score-teacher-meta"></p>
+     </div><button onclick="closeAdjustScoreModal()" class="text-gray-500 hover:text-gray-700"> <span class="text-2xl">×</span> </button>
+    </div>
+    <form id="adjust-score-form" class="space-y-4">
+     <div>
+      <label class="form-label">ประเภทคะแนน</label>
+      <div class="flex gap-4">
+       <label class="flex items-center gap-2 text-sm text-gray-700"><input type="radio" name="adjust-queue-type" value="duty" class="form-radio" checked> <span>คะแนนออกงาน</span></label>
+       <label class="flex items-center gap-2 text-sm text-gray-700"><input type="radio" name="adjust-queue-type" value="training" class="form-radio"> <span>คะแนนอบรม</span></label>
+      </div>
      </div>
-     <div class="flex justify-end space-x-3 mt-6"><button type="button" onclick="resetTeacherForm()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> รีเซ็ต </button><button type="button" onclick="closeTeacherModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"> ยกเลิก </button> <button type="submit" class="btn-primary"> บันทึก </button>
+     <div>
+      <label class="form-label">คะแนนใหม่</label>
+      <input type="number" id="adjust-score-value" class="form-input" min="0" required>
+      <p class="text-xs text-gray-500 mt-1">คะแนนปัจจุบัน: <span id="adjust-score-current">0</span></p>
+     </div>
+     <div>
+      <label class="form-label">เหตุผลการปรับคะแนน</label>
+      <textarea id="adjust-score-reason" class="form-input" rows="3" placeholder="บันทึกเหตุผลการปรับคะแนน" required></textarea>
+     </div>
+     <div class="flex justify-end gap-3 pt-2">
+      <button type="button" onclick="closeAdjustScoreModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">ยกเลิก</button>
+      <button type="submit" class="btn-primary">บันทึก</button>
      </div>
     </form>
    </div>
@@ -940,6 +1059,8 @@
         let selectedTeacherId = null;
         let dataInitialized = false;
         let firebaseDataLoaded = false;
+        let currentAdjustTeacherId = null;
+        let currentAdjustQueueType = QUEUE_TYPES.DUTY;
 
         function normalizeDateString(input) {
             if (!input) {
@@ -997,12 +1118,14 @@
             if (typeof t.trainingSwapCount !== 'number') {
                 t.trainingSwapCount = 0;
             }
-            if (typeof t.dutyQueueScore !== 'number') {
-                t.dutyQueueScore = fallbackScore;
+            if (!Number.isFinite(t.dutyQueueScore)) {
+                t.dutyQueueScore = Number.isFinite(fallbackScore) ? fallbackScore : 0;
             }
-            if (typeof t.trainingQueueScore !== 'number') {
+            if (!Number.isFinite(t.trainingQueueScore)) {
                 t.trainingQueueScore = 0;
             }
+            t.dutyQueueScore = Math.max(0, t.dutyQueueScore);
+            t.trainingQueueScore = Math.max(0, t.trainingQueueScore);
             t.queueScore = t.dutyQueueScore;
             t.lastEventDate = t.lastEventDate ? normalizeDateString(t.lastEventDate) : null;
             t.lastDutyDate = t.lastDutyDate ? normalizeDateString(t.lastDutyDate) : null;
@@ -1028,10 +1151,11 @@
             }
             ensureTeacherStats(teacher);
             const numericValue = Number.isFinite(value) ? value : 0;
+            const safeValue = Math.max(0, numericValue);
             if (queueType === QUEUE_TYPES.TRAINING) {
-                teacher.trainingQueueScore = numericValue;
+                teacher.trainingQueueScore = safeValue;
             } else {
-                teacher.dutyQueueScore = numericValue;
+                teacher.dutyQueueScore = safeValue;
             }
             teacher.queueScore = teacher.dutyQueueScore;
         }
@@ -1305,6 +1429,7 @@
 
         let firebaseStatusTimeout = null;
         let firebaseWriteErrorNotified = false;
+        let toastIdCounter = 0;
 
         function clearFirebaseStatus() {
             const banner = document.getElementById('firebase-status-banner');
@@ -1317,6 +1442,45 @@
                 clearTimeout(firebaseStatusTimeout);
                 firebaseStatusTimeout = null;
             }
+        }
+
+        function showToast(message, type = 'info', duration = 3200) {
+            if (!message) {
+                return;
+            }
+
+            const container = document.getElementById('toast-container');
+            if (!container) {
+                return;
+            }
+
+            const toast = document.createElement('div');
+            toastIdCounter += 1;
+            const toastId = `toast-${toastIdCounter}`;
+            toast.id = toastId;
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+
+            container.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.classList.add('show');
+            });
+
+            const hide = () => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    if (toast.parentElement) {
+                        toast.parentElement.removeChild(toast);
+                    }
+                }, 300);
+            };
+
+            if (duration > 0) {
+                setTimeout(hide, duration);
+            }
+
+            return hide;
         }
 
         function getFirebaseStatusTemplate(type = 'info') {
@@ -1364,6 +1528,10 @@
                 </div>
             `;
             banner.classList.remove('hidden');
+
+            if (type === 'success' && /เชื่อมต่อ Cloud Firestore สำเร็จ/.test(message)) {
+                showToast(message, 'success');
+            }
 
             if (!sticky) {
                 if (firebaseStatusTimeout) {
@@ -2049,6 +2217,10 @@
                         <div class="${trainingClass}"><span>อบรม</span><span class="font-semibold text-gray-700">${trainingCount}</span></div>
                         <div class="queue-mini-stat is-sub"><span>แทนรวม</span><span class="font-semibold text-gray-700">${swapCount}</span></div>
                     </div>
+                    <div class="queue-card-actions">
+                        <button type="button" class="queue-card-action-button edit" onclick="event.stopPropagation(); openTeacherModal(${teacher.teacherId});">แก้ไข</button>
+                        <button type="button" class="queue-card-action-button adjust" onclick="event.stopPropagation(); openAdjustScoreModal(${teacher.teacherId}, '${queueType}')">ปรับคะแนน</button>
+                    </div>
                 </div>
             `;
         }
@@ -2057,6 +2229,17 @@
             currentNextQueueSelection = { teacherId, queueType };
             highlightNextQueueSelection();
             renderNextQueueInsightFromSelection();
+        }
+
+        function handleTopTeacherKey(event, teacherId) {
+            if (!event) {
+                return;
+            }
+
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openTeacherModal(teacherId);
+            }
         }
 
         function highlightNextQueueSelection() {
@@ -2177,6 +2360,10 @@
                     <div class="mt-4">
                         <p class="text-sm font-semibold text-gray-700 mb-2">ประวัติที่เกี่ยวข้อง (${queueLabel})</p>
                         <ul class="space-y-2">${relatedItemsHtml}</ul>
+                    </div>
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <button type="button" class="btn-primary flex-1 min-w-[140px]" onclick="openTeacherModal(${teacher.teacherId})"><span class="mr-1">✏️</span>แก้ไขข้อมูล</button>
+                        <button type="button" class="btn-success flex-1 min-w-[140px]" onclick="openAdjustScoreModal(${teacher.teacherId}, '${queueType}')"><span class="mr-1">⚖️</span>ปรับคะแนน</button>
                     </div>
                 </div>
             `;
@@ -2311,7 +2498,7 @@
                 .slice(0, 5);
 
             const topTeachersHtml = topTeachers.map(teacher => `
-                <div class="flex justify-between items-center p-3 rounded-lg" style="background: rgba(137, 77, 91, 0.08); border: 1px solid rgba(137, 77, 91, 0.2);">
+                <div class="flex justify-between items-center p-3 rounded-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#894D5B]" style="background: rgba(137, 77, 91, 0.08); border: 1px solid rgba(137, 77, 91, 0.2);" role="button" tabindex="0" onclick="openTeacherModal(${teacher.teacherId})" onkeydown="handleTopTeacherKey(event, ${teacher.teacherId})">
                     <div class="flex items-center">
                         ${createTeacherAvatar(teacher)}
                         <div class="ml-3">
@@ -2694,7 +2881,7 @@
                     <button class="btn-primary flex-1" onclick="editTeacher(${teacher.teacherId})">
                         <span class="mr-1">✏️</span>แก้ไขข้อมูล
                     </button>
-                    <button class="btn-success flex-1" onclick="adjustQueueScore(${teacher.teacherId})">
+                    <button class="btn-success flex-1" onclick="openAdjustScoreModal(${teacher.teacherId})">
                         <span class="mr-1">⚖️</span>ปรับคะแนนคิว
                     </button>
                     <button class="btn-delete flex-1" onclick="deleteTeacher(${teacher.teacherId})">
@@ -3017,6 +3204,69 @@
             document.getElementById('teacher-modal').classList.remove('show');
             currentTeacherId = null;
             currentTeacherInitialData = null;
+        }
+
+        function openAdjustScoreModal(teacherId, queueType = QUEUE_TYPES.DUTY) {
+            const teacher = getTeacherById(teacherId);
+            if (!teacher) {
+                alert('ไม่พบข้อมูลครูที่ต้องการปรับคะแนน');
+                return;
+            }
+
+            ensureTeacherStats(teacher);
+            currentAdjustTeacherId = teacherId;
+            currentAdjustQueueType = queueType === QUEUE_TYPES.TRAINING ? QUEUE_TYPES.TRAINING : QUEUE_TYPES.DUTY;
+
+            const modal = document.getElementById('adjust-score-modal');
+            const meta = document.getElementById('adjust-score-teacher-meta');
+            const valueInput = document.getElementById('adjust-score-value');
+            const currentDisplay = document.getElementById('adjust-score-current');
+            const reasonInput = document.getElementById('adjust-score-reason');
+            const radios = document.querySelectorAll('input[name="adjust-queue-type"]');
+
+            const score = getTeacherQueueScore(teacher, currentAdjustQueueType);
+            if (meta) {
+                meta.textContent = `${teacher.name} • ${teacher.position || '-'}`;
+            }
+
+            radios.forEach(radio => {
+                radio.checked = radio.value === currentAdjustQueueType;
+            });
+
+            if (valueInput) {
+                valueInput.value = score;
+                setTimeout(() => {
+                    try {
+                        valueInput.focus({ preventScroll: true });
+                    } catch (focusError) {
+                        valueInput.focus();
+                    }
+                    valueInput.select();
+                }, 80);
+            }
+            if (currentDisplay) {
+                currentDisplay.textContent = score;
+            }
+            if (reasonInput) {
+                reasonInput.value = '';
+            }
+
+            modal.classList.add('show');
+        }
+
+        function closeAdjustScoreModal() {
+            const modal = document.getElementById('adjust-score-modal');
+            modal.classList.remove('show');
+            const form = document.getElementById('adjust-score-form');
+            if (form) {
+                form.reset();
+            }
+            const currentDisplay = document.getElementById('adjust-score-current');
+            if (currentDisplay) {
+                currentDisplay.textContent = '0';
+            }
+            currentAdjustTeacherId = null;
+            currentAdjustQueueType = QUEUE_TYPES.DUTY;
         }
 
         function openAutoAssignModal(eventId, queueType = QUEUE_TYPES.DUTY) {
@@ -3391,54 +3641,8 @@
             openTeacherModal(teacherId);
         }
 
-        function adjustQueueScore(teacherId) {
-            const teacher = getTeacherById(teacherId);
-            if (!teacher) {
-                alert('ไม่พบข้อมูลครูที่ต้องการปรับคะแนน');
-                return;
-            }
-
-            const typeInput = prompt('ต้องการปรับคะแนนประเภทใด? พิมพ์ "งาน" สำหรับออกงาน หรือ "อบรม" สำหรับอบรม', 'งาน');
-            if (!typeInput) {
-                return;
-            }
-
-            const normalized = typeInput.trim().toLowerCase();
-            const queueType = normalized === 'อบรม' || normalized === 'training'
-                ? QUEUE_TYPES.TRAINING
-                : QUEUE_TYPES.DUTY;
-
-            const label = queueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน';
-            const currentScore = getTeacherQueueScore(teacher, queueType);
-            const newScoreInput = prompt(`ปรับ${label}สำหรับ ${teacher.name}\nคะแนนปัจจุบัน: ${currentScore}`, currentScore);
-
-            if (newScoreInput === null || newScoreInput === '') {
-                return;
-            }
-
-            const parsedScore = parseInt(newScoreInput, 10);
-            if (Number.isNaN(parsedScore)) {
-                alert('กรุณากรอกตัวเลขสำหรับคะแนนใหม่');
-                return;
-            }
-
-            const reason = prompt('กรุณาระบุเหตุผลการปรับแก้ไข (บังคับ):');
-            if (!reason || !reason.trim()) {
-                alert('กรุณาระบุเหตุผลการปรับแก้ไข');
-                return;
-            }
-
-            const oldScore = currentScore;
-            setTeacherQueueScore(teacher, queueType, parsedScore);
-
-            addActivityLog(
-                'manual-edit',
-                `ปรับ${label}ของ ${teacher.name}`,
-                `จาก ${oldScore} เป็น ${parsedScore} | เหตุผล: ${reason}`
-            );
-
-            saveData();
-            renderTeachersTable();
+        function adjustQueueScore(teacherId, queueType = QUEUE_TYPES.DUTY) {
+            openAdjustScoreModal(teacherId, queueType);
         }
 
         function deleteQueueItem(itemId, queueType = QUEUE_TYPES.DUTY) {
@@ -3747,9 +3951,83 @@
             }
         });
 
+        document.getElementById('adjust-score-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            if (!currentAdjustTeacherId) {
+                alert('ไม่พบข้อมูลครูที่ต้องการปรับคะแนน');
+                return;
+            }
+
+            const teacher = getTeacherById(currentAdjustTeacherId);
+            if (!teacher) {
+                alert('ไม่พบข้อมูลครูที่ต้องการปรับคะแนน');
+                return;
+            }
+
+            const selectedTypeInput = document.querySelector('input[name="adjust-queue-type"]:checked');
+            const queueType = selectedTypeInput && selectedTypeInput.value === QUEUE_TYPES.TRAINING
+                ? QUEUE_TYPES.TRAINING
+                : QUEUE_TYPES.DUTY;
+
+            currentAdjustQueueType = queueType;
+
+            const valueInput = document.getElementById('adjust-score-value');
+            const reasonInput = document.getElementById('adjust-score-reason');
+            const newScore = parseInt(valueInput.value, 10);
+
+            if (!Number.isFinite(newScore)) {
+                alert('กรุณากรอกคะแนนเป็นตัวเลข');
+                return;
+            }
+
+            const reason = (reasonInput.value || '').trim();
+            if (!reason) {
+                alert('กรุณาระบุเหตุผลการปรับคะแนน');
+                return;
+            }
+
+            const oldScore = getTeacherQueueScore(teacher, queueType);
+            setTeacherQueueScore(teacher, queueType, newScore);
+
+            addActivityLog(
+                'manual-edit',
+                `ปรับ${queueType === QUEUE_TYPES.TRAINING ? 'คะแนนอบรม' : 'คะแนนออกงาน'}ของ ${teacher.name}`,
+                `จาก ${oldScore} เป็น ${newScore} | เหตุผล: ${reason}`
+            );
+
+            saveData();
+            closeAdjustScoreModal();
+        });
+
+        document.querySelectorAll('input[name="adjust-queue-type"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (!currentAdjustTeacherId) {
+                    return;
+                }
+
+                const teacher = getTeacherById(currentAdjustTeacherId);
+                if (!teacher) {
+                    return;
+                }
+
+                const selectedType = this.value === QUEUE_TYPES.TRAINING ? QUEUE_TYPES.TRAINING : QUEUE_TYPES.DUTY;
+                currentAdjustQueueType = selectedType;
+                const score = getTeacherQueueScore(teacher, selectedType);
+                const valueInput = document.getElementById('adjust-score-value');
+                const currentDisplay = document.getElementById('adjust-score-current');
+                if (valueInput) {
+                    valueInput.value = score;
+                }
+                if (currentDisplay) {
+                    currentDisplay.textContent = score;
+                }
+            });
+        });
+
         document.getElementById('substitution-form').addEventListener('submit', function(e) {
             e.preventDefault();
-            
+
             const originalTeacherId = parseInt(document.getElementById('original-teacher').value);
             const substituteTeacherId = parseInt(document.getElementById('substitute-teacher').value);
             const reason = document.getElementById('substitution-reason').value;
